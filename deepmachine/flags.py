@@ -31,6 +31,12 @@ tf.app.flags.DEFINE_integer('log_every_n_steps', 1,
                             '''log_every_n_steps''')
 tf.app.flags.DEFINE_integer('logging_level', 20,
                             '''logging_level''')
+tf.app.flags.DEFINE_string('data_keys', 'inputs,heatmap,iuv',
+                            '''type of data to load''')
+tf.app.flags.DEFINE_string('db_provider', 'DensePoseProvider',
+                            '''db_provider''')
+
+
 
 
 tf.app.flags.DEFINE_string('eval_dir', '',
@@ -41,3 +47,8 @@ tf.app.flags.DEFINE_integer('eval_size', 200, '''The batch size to use.''')
 tf.app.flags.DEFINE_string('pretrained_model_checkpoint_path', '',
                            '''If specified, restore this pretrained model '''
                            '''before beginning any training.''')
+
+
+# DenseReg parameters
+tf.app.flags.DEFINE_integer('quantization_step', 10,
+                            '''How many quantization_step to use.''')

@@ -66,6 +66,14 @@ def tf_lms_to_heatmap(lms, h, w, n_landmarks, marked_index, sigma=5):
     return img_hm
 
 
+def tf_heatmap_to_lms(heatmap):
+    hs = tf.argmax(tf.reduce_max(heatmap, 2), 1)
+    ws = tf.argmax(tf.reduce_max(heatmap, 1), 1)
+    lms = tf.transpose(tf.to_float(tf.stack([hs, ws])), perm=[1, 2, 0])
+
+    return lms
+
+
 def tf_image_batch_to_grid(images, col_size=4):
     image_shape = tf.shape(images)
 

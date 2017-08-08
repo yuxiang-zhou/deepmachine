@@ -110,7 +110,7 @@ def StackedHourglass(
     is_training=True,
     deconv='bilinear',
     n_channels=16,
-    n_stacks=8,
+    n_stacks=2,
     **kwargs
 ):
     batch_size = tf.shape(inputs)[0]

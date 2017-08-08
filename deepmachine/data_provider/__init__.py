@@ -1,5 +1,5 @@
 from .base import *
 
-from . import ear
-from . import pose
-from . import face
+from .ear import *
+from .pose import *
+from .face import *

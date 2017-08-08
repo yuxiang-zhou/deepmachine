@@ -865,8 +865,6 @@ def pckh(preds, gts, scales):
     t_range = np.arange(0, 0.51, 0.01)
     dists = tf.sqrt(tf.reduce_sum(tf.pow(preds - gts, 2),
                                   reduction_indices=-1)) / scales
-    # pckh = [ced_accuracy(t, dists) for t in t_range]
-    # return pckh[-1]
     return ced_accuracy(0.5, dists)
 
 

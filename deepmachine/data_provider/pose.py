@@ -18,12 +18,13 @@ from ..utils import tf_lms_to_heatmap, tf_rotate_points
 from .base import TFRecordProvider, image_resolver, heatmap_resolver, iuv_resolver
 slim = tf.contrib.slim
 
+
 FeatureIUV = {
     # images
     'image': tf.FixedLenFeature([], tf.string),
     'height': tf.FixedLenFeature([], tf.int64),
     'width': tf.FixedLenFeature([], tf.int64),
-    # images
+    # iuv
     'iuv': tf.FixedLenFeature([], tf.string),
     'iuv_height': tf.FixedLenFeature([], tf.int64),
     'iuv_width': tf.FixedLenFeature([], tf.int64),
@@ -46,8 +47,26 @@ FeatureIUV = {
     'restore_scale': tf.FixedLenFeature([], tf.float32)
 }
 
+FeatureHeatmap = {
+    # images
+    'image': tf.FixedLenFeature([], tf.string),
+    'height': tf.FixedLenFeature([], tf.int64),
+    'width': tf.FixedLenFeature([], tf.int64),
+
+    # landmarks
+    'n_landmarks': tf.FixedLenFeature([], tf.int64),
+    'gt': tf.FixedLenFeature([], tf.string),
+    'visible': tf.FixedLenFeature([], tf.string),
+    'marked': tf.FixedLenFeature([], tf.string),
+}
+
+ResolverHM = {
+    'inputs': image_resolver,
+    'heatmap': heatmap_resolver,
+}
+
 ResolverIUV = {
-    'image': image_resolver,
+    'inputs': image_resolver,
     'heatmap': heatmap_resolver,
     'iuv': iuv_resolver
 }
@@ -67,4 +86,11 @@ DensePoseProvider = functools.partial(
     features=FeatureIUV,
     augmentation=True,
     resolvers=ResolverIUV
+)
+
+HeatmapProvider = functools.partial(
+    TFRecordProvider,
+    features=FeatureHeatmap,
+    augmentation=True,
+    resolvers=ResolverHM
 )

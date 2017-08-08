@@ -41,6 +41,7 @@ class DeepMachine(object):
         self.network_op = network_op
         self.train_op = ops.train.adam
         self.init_op = ops.init.restore
+        self.eval_op = _undefined_op
         self.restore_path = restore_path
 
     @property
@@ -77,6 +78,15 @@ class DeepMachine(object):
     @init_op.setter
     def init_op(self, value):
         self.__init_op = value
+        self._reset_graph()
+
+    @property
+    def eval_op(self):
+        return self.__eval_op
+
+    @eval_op.setter
+    def eval_op(self, value):
+        self.__eval_op = value
         self._reset_graph()
 
     def add_loss_op(self, op):
@@ -120,7 +130,7 @@ class DeepMachine(object):
 
             # summaries
             for op in self._summary_ops:
-                op(data_eps, net_eps)
+                op(data_eps, net_eps, is_training=True)
 
         self._train_graph = g
 
@@ -140,8 +150,33 @@ class DeepMachine(object):
                                 saver=saver,
                                 log_every_n_steps=log_every_n_steps)
 
-    def test(self):
-        pass
+    def test(self,
+             eval_data_op=_undefined_op,
+             eval_dir=FLAGS.eval_dir,
+             train_dir=FLAGS.train_dir,
+             eval_size=FLAGS.eval_size):
+
+        with tf.Graph().as_default() as g:
+            # Load datasets.
+            data_eps = eval_data_op()
+
+            # Define model graph.
+            net_eps = self.network_op(data_eps['inputs'], is_training=False)
+
+        self._test_graph = g
+
+        with tf.Session(graph=self._test_graph) as sess:
+
+            eval_ops, summary_ops = self.eval_op(data_eps, net_eps)
+
+            slim.evaluation.evaluation_loop(
+                '',
+                train_dir,
+                eval_dir,
+                num_evals=eval_size,
+                eval_op=eval_ops,
+                summary_op=tf.summary.merge(summary_ops),
+                eval_interval_secs=30)
 
     def run_one(self, data):
         return self._run(data)

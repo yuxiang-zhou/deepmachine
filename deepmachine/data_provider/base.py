@@ -1,5 +1,6 @@
 import tensorflow as tf
 import functools
+import numpy as np
 
 from .. import utils
 
@@ -8,7 +9,12 @@ ResizeMethod = tf.image.ResizeMethod
 
 
 class TFRecordProvider(object):
-    def __init__(self, filename, features, batch_size=1, augmentation=True, resolvers={}):
+    def __init__(self,
+                 filename,
+                 features,
+                 batch_size=1,
+                 augmentation=True,
+                 resolvers={}):
         self._filename = filename
         self._features = features
         self._batch_size = batch_size
@@ -28,11 +34,8 @@ class TFRecordProvider(object):
         inputs_batch = tf.train.shuffle_batch(
             tensors, self._batch_size, 100, 20, 4)
 
-        retval = {
-            'inputs': inputs_batch[0],
-        }
-
-        for k, b in zip(keys[1:], inputs_batch[1:]):
+        retval = {}
+        for k, b in zip(keys, inputs_batch):
             retval[k] = b
 
         return retval
@@ -71,6 +74,51 @@ class TFRecordProvider(object):
             data.append(fn(features))
 
         return data
+
+
+class DatasetMixer():
+    def __init__(self,
+                 providers,
+                 batch_size=1):
+        self.providers = providers
+        self.batch_size = batch_size
+
+
+    def get(self, *keys):
+        queue = None
+        enqueue_ops = []
+        for p in self.providers:
+            tensor_dict = p.get(*keys)
+            tensors = [tensor_dict[k] for k in keys]
+            shapes = [x.get_shape() for x in tensors]
+
+            if queue is None:
+                dtypes = [x.dtype for x in tensors]
+                queue = tf.FIFOQueue(
+                    capacity=200,
+                    dtypes=dtypes, name='fifoqueue')
+
+            enqueue_ops.append(queue.enqueue_many(tensors))
+
+        qr = tf.train.QueueRunner(queue, enqueue_ops)
+        tf.train.add_queue_runner(qr)
+
+        tensors_dequeue = queue.dequeue()
+
+        for t, s in zip(tensors_dequeue, shapes):
+            t.set_shape(s[1:])
+
+        ret_val = tf.train.batch(
+            tensors_dequeue,
+            self.batch_size,
+            num_threads=2,
+            enqueue_many=False,
+            dynamic_pad=True,
+            capacity=200)
+
+        ret_dict = {k:v for k,v in zip(keys, ret_val)}
+
+        return ret_dict
 
 
 def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1])):
