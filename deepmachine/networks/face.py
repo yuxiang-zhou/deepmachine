@@ -20,7 +20,7 @@ def DenseRegFace(
     width = tf.shape(inputs)[2]
     channels = tf.shape(inputs)[3]
 
-    states = []
+    states = {}
 
     with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
         with slim.arg_scope(models.hourglass_arg_scope_tf()):
@@ -33,14 +33,7 @@ def DenseRegFace(
                 classification_channels=n_classes*2,
                 deconv=deconv)
 
-            states.append(net)
-
-            net, _ = models.hourglass(
-                net,
-                regression_channels=68,
-                classification_channels=0,
-                deconv=deconv)
-
+            states['uv_classification'] = net
 
             prediction = net
 

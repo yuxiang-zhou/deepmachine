@@ -52,3 +52,6 @@ tf.app.flags.DEFINE_string('pretrained_model_checkpoint_path', '',
 # DenseReg parameters
 tf.app.flags.DEFINE_integer('quantization_step', 10,
                             '''How many quantization_step to use.''')
+
+tf.app.flags.DEFINE_integer('n_landmarks', 68,
+                            '''How many quantization_step to use.''')

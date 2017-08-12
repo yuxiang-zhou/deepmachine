@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..flags import FLAGS
 
+
 def generate_occlusion(image, uv):
     def wrap(image, uv):
         for _ in range(int(np.random.rand() * 5)):
@@ -92,7 +93,7 @@ class Dataset:
         self.tfrecord_names = names
         self.is_training = is_training
 
-    def get(self):
+    def get(self, *args, **kwargs):
         paths = [str(self.root / x) for x in self.tfrecord_names]
 
         filename_queue = tf.train.string_input_producer(paths)
@@ -120,6 +121,8 @@ class Dataset:
         uv.set_shape((self.uv_channels * width * height))
         uv = tf.reshape(uv, (height, width, self.uv_channels))
 
+
+
         if self.is_training:
             begin = tf.random_uniform((), 0, 20, tf.int32)
             size = tf.reduce_min(
@@ -128,12 +131,12 @@ class Dataset:
             image = tf.slice(image, [begin, begin, 0], [size, size, -1])
             uv = tf.slice(uv, [begin, begin, 0], [size, size, -1])
 
-            image = tf.image.resize_images(image, (200, 200), method=0)
-            uv = tf.image.resize_images(uv, (200, 200), method=1)[..., :2]
+            image = tf.image.resize_images(image, (256, 256), method=0)
+            uv = tf.image.resize_images(uv, (256, 256), method=1)[..., :2]
 
             # image, uv = generate_occlusion(image, uv)
-            image.set_shape((200, 200, 3))
-            uv.set_shape((200, 200, 2))
+            image.set_shape((256, 256, 3))
+            uv.set_shape((256, 256, 2))
 
             image = distort_color(image / 255.) * 255.
 
@@ -208,11 +211,11 @@ class FaceDatasetMixer():
             provider = globals()[name](batch_size=bs, is_training=is_training)
             self.providers.append(provider)
 
-    def get(self, **kargs):
+    def get(self, *args, **kwargs):
         queue = None
         enqueue_ops = []
         for p in self.providers:
-            tensors = p.get(**kargs)
+            tensors = p.get(*args,**kwargs)
 
             shapes = [x.get_shape() for x in tensors]
 
@@ -247,8 +250,10 @@ class FaceDatasetMixer():
         }
 
 
-DenseFaceProvider = FaceDatasetMixer(
-    ['SyntheticDataset', 'MenpoDataset', 'HelenDataset'],
-    batch_size=FLAGS.batch_size,
-    densities=(1, 2, 1, 1),
-    is_training=True)
+def DenseFaceProvider(path, batch_size=1, **kwargs):
+
+    return FaceDatasetMixer(
+        ['SyntheticDataset', 'MenpoDataset', 'HelenDataset'],
+        batch_size=batch_size,
+        densities=(1, 2, 1, 1),
+        is_training=True)

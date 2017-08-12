@@ -104,7 +104,8 @@ class DeepMachine(object):
               ):
 
         # build graph if needed
-        with tf.Graph().as_default() as g:
+        g = tf.Graph()
+        with g.as_default():
 
             # Load datasets.
             data_eps = train_data_op()
@@ -135,20 +136,22 @@ class DeepMachine(object):
         self._train_graph = g
 
         # start session
-        with tf.Session(graph=self._train_graph) as sess:
+        with self._train_graph.as_default():
+            with tf.Session(graph=self._train_graph) as sess:
 
-            # init and start
-            init_fn = self.init_op()
+                # init and start
+                init_fn = self.init_op()
 
-            slim.learning.train(self._train_op,
-                                train_dir,
-                                save_summaries_secs=60,
-                                init_fn=init_fn,
-                                global_step=self._global_step,
-                                number_of_steps=number_of_steps,
-                                save_interval_secs=600,
-                                saver=saver,
-                                log_every_n_steps=log_every_n_steps)
+                slim.learning.train(self._train_op,
+                                    train_dir,
+                                    save_summaries_secs=60,
+                                    init_fn=init_fn,
+                                    global_step=self._global_step,
+                                    number_of_steps=number_of_steps,
+                                    save_interval_secs=600,
+                                    saver=saver,
+                                    log_every_n_steps=log_every_n_steps)
+
 
     def test(self,
              eval_data_op=_undefined_op,
@@ -156,7 +159,9 @@ class DeepMachine(object):
              train_dir=FLAGS.train_dir,
              eval_size=FLAGS.eval_size):
 
-        with tf.Graph().as_default() as g:
+        g = tf.Graph()
+        with g.as_default():
+
             # Load datasets.
             data_eps = eval_data_op()
 
@@ -165,18 +170,19 @@ class DeepMachine(object):
 
         self._test_graph = g
 
-        with tf.Session(graph=self._test_graph) as sess:
+        with self._test_graph.as_default():
+            with tf.Session(graph=self._test_graph) as sess:
 
-            eval_ops, summary_ops = self.eval_op(data_eps, net_eps)
+                eval_ops, summary_ops = self.eval_op(data_eps, net_eps)
 
-            slim.evaluation.evaluation_loop(
-                '',
-                train_dir,
-                eval_dir,
-                num_evals=eval_size,
-                eval_op=eval_ops,
-                summary_op=tf.summary.merge(summary_ops),
-                eval_interval_secs=30)
+                slim.evaluation.evaluation_loop(
+                    '',
+                    train_dir,
+                    eval_dir,
+                    num_evals=eval_size,
+                    eval_op=eval_ops,
+                    summary_op=tf.summary.merge(summary_ops),
+                    eval_interval_secs=30)
 
     def run_one(self, data):
         return self._run(data)

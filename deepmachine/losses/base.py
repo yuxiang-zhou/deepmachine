@@ -63,7 +63,7 @@ def loss_uv_classification(data_eps, network_eps):
     uvs = data_eps['uv']
     n_classes = k+1
     _, states = network_eps
-    logits, *_ = states
+    logits = states['uv_classification']
 
     for i, name in enumerate(['hor', 'ver']):
         gt = tf.to_int64(tf.floor(uvs[..., i] * k))

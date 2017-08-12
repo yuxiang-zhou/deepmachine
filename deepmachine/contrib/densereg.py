@@ -15,6 +15,7 @@ from .. import losses
 from .. import summary
 from .. import data_provider
 from .. import ops
+from ..flags import FLAGS
 
 def get_dense_pose_net():
     # create machine
@@ -78,6 +79,53 @@ def get_hourglass_pose():
 
     return model
 
+def get_inception_hourglass_pose():
+    # create machine
+    model = deepmachine.DeepMachine(
+        network_op=functools.partial(
+            pose.StackedHourglass,
+            n_channels=16,
+            n_stacks=2,
+            deconv='transpose+conv',
+            bottleneck='bottleneck_inception'
+        )
+    )
+
+    # add losses
+    model.add_loss_op(losses.loss_stacked_landmark_regression)
+
+    # add summaries
+    model.add_summary_op(summary.summary_landmarks)
+
+    # set evaluation op
+    model.eval_op = ops.eval.pose_pckh
+
+    return model
+
+
+def get_se_inception_hourglass_pose():
+    # create machine
+    model = deepmachine.DeepMachine(
+        network_op=functools.partial(
+            pose.StackedHourglass,
+            n_channels=16,
+            n_stacks=2,
+            deconv='transpose+conv',
+            bottleneck='bottleneck_inception_SE'
+        )
+    )
+
+    # add losses
+    model.add_loss_op(losses.loss_stacked_landmark_regression)
+
+    # add summaries
+    model.add_summary_op(summary.summary_landmarks)
+
+    # set evaluation op
+    model.eval_op = ops.eval.pose_pckh
+
+    return model
+
 
 def get_densereg_face(n_classes=11, use_regression=False):
     # create machine
@@ -90,14 +138,10 @@ def get_densereg_face(n_classes=11, use_regression=False):
     )
 
     # add losses
-    model.add_loss_op(losses.loss_landmark_regression)
     model.add_loss_op(losses.loss_uv_classification)
 
     # add summaries
-    model.add_summary_op(summary.summary_landmarks)
     model.add_summary_op(summary.summary_uv)
 
-    # set evaluation op
-    # model.eval_op = ops.eval.pose_pckh
 
     return model

@@ -111,6 +111,7 @@ def StackedHourglass(
     deconv='bilinear',
     n_channels=16,
     n_stacks=2,
+    bottleneck='bottleneck',
     **kwargs
 ):
     batch_size = tf.shape(inputs)[0]
@@ -135,7 +136,8 @@ def StackedHourglass(
                         net,
                         regression_channels=n_channels,
                         classification_channels=0,
-                        deconv=deconv)
+                        deconv=deconv,
+                        bottleneck=bottleneck)
 
                     states.append(net)
 

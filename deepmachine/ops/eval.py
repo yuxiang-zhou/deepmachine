@@ -6,10 +6,14 @@ from .. import utils
 
 
 def pose_pckh(data_eps, network_eps):
+    summary_ops = []
 
     # get data
     gt_heatmap = data_eps['heatmap']
     pred_heatmap, _ = network_eps
+
+    tf.summary.image('images', data_eps['inputs'], max_outputs=4)
+    tf.summary.image('gt/heatmap', tf.reduce_sum(gt_heatmap, -1)[..., None] * 255.0, max_outputs=4)
 
     # get landmarks
     gt_lms = utils.tf_heatmap_to_lms(gt_heatmap)
@@ -34,7 +38,6 @@ def pose_pckh(data_eps, network_eps):
     })
 
     # Define the streaming summaries to write
-    summary_ops = []
     for metric_name, metric_value in metrics_to_values.items():
         op = tf.summary.scalar(metric_name, metric_value)
         op = tf.Print(op, [metric_value], metric_name)

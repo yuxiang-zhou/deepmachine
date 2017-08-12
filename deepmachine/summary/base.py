@@ -13,10 +13,21 @@ def summary_total_loss(data_eps, network_eps, is_training=True):
         tf.summary.scalar('losses/total_loss', total_loss)
 
 
-def summary_input_image(data_eps, network_eps, is_training=True):
+def summary_uv(data_eps, network_eps, is_training=True):
     uvs = data_eps['uv']
-    tf.summary.image('uvs/h', uvs[..., :1])
-    tf.summary.image('uvs/v', uvs[..., 1:])
+    pred_uv, _ = network_eps
+
+
+    tf.summary.image('gt/uvs/h', uvs[..., :1])
+    tf.summary.image('gt/uvs/v', uvs[..., 1:])
+
+    tf.summary.image(
+        'predictions/cascade-regression',
+        tf.map_fn(
+            utils.tf_image_batch_to_grid,
+            tf.transpose(pred_uv, [0, 3, 1, 2])[..., None]
+        ),
+        max_outputs=4)
 
 def summary_iuv(data_eps, network_eps, is_training=True):
 

@@ -24,9 +24,8 @@ def deconv_layer(net, up_scale, n_channel, method='transpose'):
 
     return net
 
+
 # arg scopes
-
-
 def hourglass_arg_scope_torch(weight_decay=0.0001,
                               batch_norm_decay=0.997,
                               batch_norm_epsilon=1e-5,
@@ -101,29 +100,87 @@ def hourglass_arg_scope_tf(weight_decay=0.0001,
                 return arg_sc
 
 
-def hourglass_module(inputs, depth=0, deconv='bilinear'):
-    with tf.variable_scope('depth_{}'.format(depth)):
-        # buttom up layers
-        net = slim.max_pool2d(inputs, [2, 2], scope='pool')
-        net = slim.stack(net, bottleneck_module, [
-                         (256, None), (256, None), (256, None)], scope='buttom_up')
+# bottleneck_inception_SE
+def bottleneck_inception_SE_module(
+        inputs,
+        out_channel=256,
+        res=None,
+        scope='inception_block'):
 
-        # connecting layers
-        if depth > 0:
-            net = hourglass_module(net, depth=depth - 1, deconv=deconv)
-        else:
-            net = bottleneck_module(
-                net, out_channel=512, res=512, scope='connecting')
+    min_channel = out_channel // 8
+    with tf.variable_scope(scope):
+        with tf.variable_scope('Branch_0'):
+            branch_0 = slim.conv2d(inputs, min_channel * 3,
+                                   [1, 1], scope='Conv2d_1x1')
+        with tf.variable_scope('Branch_1'):
+            branch_1 = slim.conv2d(inputs, min_channel *
+                                   3 / 2, [1, 1], scope='Conv2d_1x1')
+            branch_1 = slim.conv2d(
+                branch_1, min_channel * 3, [3, 3], scope='Conv2d_3x3')
+        with tf.variable_scope('Branch_2'):
+            branch_2 = slim.conv2d(inputs, min_channel //
+                                   3, [1, 1], scope='Conv2d_1x1')
+            branch_2 = slim.conv2d(
+                branch_2, min_channel, [3, 3], scope='Conv2d_3x3')
+        with tf.variable_scope('Branch_3'):
+            branch_3 = slim.max_pool2d(inputs, [3, 3], 1, scope='MaxPool_3x3')
+            branch_3 = slim.conv2d(
+                branch_3, min_channel, [1, 1], scope='Conv2d_1x1')
+        net = tf.concat(
+            axis=3, values=[branch_0, branch_1, branch_2, branch_3])
 
-        # top down layers
-        net = bottleneck_module(net, out_channel=512,
-                                res=512, scope='top_down')
-        net = deconv_layer(net, 2, 512, method=deconv)
-        # residual layers
-        net += slim.stack(inputs, bottleneck_module,
-                          [(256, None), (256, None), (512, 512)], scope='res')
+        se_branch = tf.reduce_mean(net, axis=[1, 2])
+        se_branch = slim.fully_connected(se_branch, out_channel // 16)
+        se_branch = slim.fully_connected(
+            se_branch, out_channel, activation_fn=tf.sigmoid)
 
-        return net
+        net = net * se_branch[:,None,None,:]
+
+        if res:
+            inputs = slim.conv2d(inputs, res, (1, 1),
+                                 scope='bn_res'.format(scope))
+
+        net += inputs
+
+    return net
+
+
+# bottle neck modules
+def bottleneck_inception_module(
+        inputs,
+        out_channel=256,
+        res=None,
+        scope='inception_block'):
+
+    min_channel = out_channel // 8
+    with tf.variable_scope(scope):
+        with tf.variable_scope('Branch_0'):
+            branch_0 = slim.conv2d(inputs, min_channel * 3,
+                                   [1, 1], scope='Conv2d_1x1')
+        with tf.variable_scope('Branch_1'):
+            branch_1 = slim.conv2d(inputs, min_channel *
+                                   3 / 2, [1, 1], scope='Conv2d_1x1')
+            branch_1 = slim.conv2d(
+                branch_1, min_channel * 3, [3, 3], scope='Conv2d_3x3')
+        with tf.variable_scope('Branch_2'):
+            branch_2 = slim.conv2d(inputs, min_channel //
+                                   3, [1, 1], scope='Conv2d_1x1')
+            branch_2 = slim.conv2d(
+                branch_2, min_channel, [3, 3], scope='Conv2d_3x3')
+        with tf.variable_scope('Branch_3'):
+            branch_3 = slim.max_pool2d(inputs, [3, 3], 1, scope='MaxPool_3x3')
+            branch_3 = slim.conv2d(
+                branch_3, min_channel, [1, 1], scope='Conv2d_1x1')
+        net = tf.concat(
+            axis=3, values=[branch_0, branch_1, branch_2, branch_3])
+
+        if res:
+            inputs = slim.conv2d(inputs, res, (1, 1),
+                                 scope='bn_res'.format(scope))
+
+        net += inputs
+
+    return net
 
 
 def bottleneck_module(inputs, out_channel=256, res=None, scope=''):
@@ -139,11 +196,41 @@ def bottleneck_module(inputs, out_channel=256, res=None, scope=''):
         return net
 
 
+# recursive hourglass definition
+def hourglass_module(inputs, depth=0, deconv='bilinear', bottleneck='bottleneck'):
+
+    bm_fn = globals()['%s_module' % bottleneck]
+
+    with tf.variable_scope('depth_{}'.format(depth)):
+        # buttom up layers
+        net = slim.max_pool2d(inputs, [2, 2], scope='pool')
+        net = slim.stack(net, bm_fn, [
+                         (256, None), (256, None), (256, None)], scope='buttom_up')
+
+        # connecting layers
+        if depth > 0:
+            net = hourglass_module(net, depth=depth - 1, deconv=deconv)
+        else:
+            net = bm_fn(
+                net, out_channel=512, res=512, scope='connecting')
+
+        # top down layers
+        net = bm_fn(net, out_channel=512,
+                    res=512, scope='top_down')
+        net = deconv_layer(net, 2, 512, method=deconv)
+        # residual layers
+        net += slim.stack(inputs, bm_fn,
+                          [(256, None), (256, None), (512, 512)], scope='res')
+
+        return net
+
+
 def hourglass(inputs,
               scale=1,
               regression_channels=2,
               classification_channels=22,
-              deconv='bilinear'):
+              deconv='bilinear',
+              bottleneck='bottleneck'):
     """Defines a lightweight resnet based model for dense estimation tasks.
     Args:
       inputs: A `Tensor` with dimensions [num_batches, height, width, depth].
@@ -175,7 +262,8 @@ def hourglass(inputs,
 
         # hourglasses (D3,D4,D5)
         with tf.variable_scope('hourglass'):
-            net = hourglass_module(net, depth=4, deconv=deconv)
+            net = hourglass_module(
+                net, depth=4, deconv=deconv, bottleneck=bottleneck)
 
         # final layers (D6, D7)
         net = slim.stack(net, slim.conv2d, [(512, [1, 1]), (256, [1, 1]),
