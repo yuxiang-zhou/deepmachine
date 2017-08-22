@@ -35,6 +35,7 @@ def image_builder(data):
         'width': _int_feauture(image.shape[1])
     }
 
+
 def landmark_builder(data):
     visible_pts = data['visible_pts']
     marked_index = data['marked_index']
@@ -46,4 +47,14 @@ def landmark_builder(data):
         'gt': _bytes_feauture(landmarks.astype(np.float32).tobytes()),
         'visible': _bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
         'marked': _bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
+    }
+
+
+def iuv_builder(data):
+    image = data['iuv']
+
+    return {
+        'iuv': _bytes_feauture(get_jpg_string(image)),
+        'iuv_height': _int_feauture(image.shape[0]),
+        'iuv_width': _int_feauture(image.shape[1])
     }

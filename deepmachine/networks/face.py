@@ -1,8 +1,10 @@
 import tensorflow as tf
 import numpy as np
+import functools
 
 from deepmachine.flags import FLAGS
-import deepmachine.models.stackedHG as models
+from .base import *
+from ..models import stackedHG as models
 
 slim = tf.contrib.slim
 
@@ -33,8 +35,13 @@ def DenseRegFace(
                 classification_channels=n_classes*2,
                 deconv=deconv)
 
-            states['uv_classification'] = net
+            states['uv'] = net
 
             prediction = net
 
             return prediction, states
+
+DenseFaceCascade = functools.partial(
+    DenseIUVLandmark,
+    n_landmarks=68
+    )

@@ -15,3 +15,17 @@ def restore(pretrained_model_checkpoint_path=FLAGS.pretrained_model_checkpoint_p
             variables_to_restore,
             ignore_missing_vars=True)
     return init_fn
+
+
+def restore_gan_generator_from_ckpt(checkpoint_path=FLAGS.pretrained_model_checkpoint_path):
+    init_fn = None
+
+    if checkpoint_path:
+        print('Loading model %s'%checkpoint_path)
+        variables_to_restore = slim.get_model_variables()
+        variables_to_restore = {var.op.name[10:]: var for var in variables_to_restore if 'generator/' in var.op.name}
+        init_fn = slim.assign_from_checkpoint_fn(
+            checkpoint_path,
+            variables_to_restore,
+            ignore_missing_vars=True)
+    return init_fn

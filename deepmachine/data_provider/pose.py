@@ -15,7 +15,8 @@ import sys
 
 from ..flags import FLAGS
 from ..utils import tf_lms_to_heatmap, tf_rotate_points
-from .base import TFRecordProvider, image_resolver, heatmap_resolver, iuv_resolver
+from .base import *
+
 slim = tf.contrib.slim
 
 
@@ -62,23 +63,14 @@ FeatureHeatmap = {
 
 ResolverHM = {
     'inputs': image_resolver,
-    'heatmap': heatmap_resolver,
+    'heatmap': heatmap_resolver_pose,
 }
 
 ResolverIUV = {
     'inputs': image_resolver,
-    'heatmap': heatmap_resolver,
+    'heatmap': heatmap_resolver_pose,
     'iuv': iuv_resolver
 }
-
-
-class TFRecordIUVProvider(TFRecordProvider):
-
-    # flip, rotate, scale
-    def _random_augmentation(self):
-        return tf.concat([tf.random_uniform([1]) - 1,
-                          (tf.random_uniform([1]) * 60. - 30.) * np.pi / 180.,
-                          tf.random_uniform([1]) * 0.5 + 0.75], 0)
 
 
 DensePoseProvider = functools.partial(

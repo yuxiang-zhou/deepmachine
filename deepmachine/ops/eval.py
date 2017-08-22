@@ -1,5 +1,4 @@
 import tensorflow as tf
-from deepmachine.flags import FLAGS
 
 slim = tf.contrib.slim
 from .. import utils
@@ -12,8 +11,9 @@ def pose_pckh(data_eps, network_eps):
     gt_heatmap = data_eps['heatmap']
     pred_heatmap, _ = network_eps
 
-    tf.summary.image('images', data_eps['inputs'], max_outputs=4)
-    tf.summary.image('gt/heatmap', tf.reduce_sum(gt_heatmap, -1)[..., None] * 255.0, max_outputs=4)
+    summary_ops.append(tf.summary.image('images', data_eps['inputs'], max_outputs=4))
+    summary_ops.append(tf.summary.image('gt/heatmap', tf.reduce_sum(gt_heatmap, -1)
+                     [..., None] * 255.0, max_outputs=4))
 
     # get landmarks
     gt_lms = utils.tf_heatmap_to_lms(gt_heatmap)
@@ -48,6 +48,6 @@ def pose_pckh(data_eps, network_eps):
     summary_ops.append(tf.summary.image(
         'predictions/landmark-regression',
         tf.reduce_sum(pred_heatmap, -1)[..., None] * 255.0,
-        max_outputs=min(FLAGS.batch_size, 4)))
+        max_outputs=4))
 
     return list(metrics_to_updates.values()), summary_ops

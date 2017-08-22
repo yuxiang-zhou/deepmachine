@@ -5,6 +5,7 @@ import scipy.io as sio
 from pathlib import Path
 from menpo.visualize import print_dynamic, print_progress
 from menpo.shape import PointCloud
+from menpo.image import Image
 
 from .. import utils
 
@@ -344,3 +345,66 @@ def posetrack_iterator(istraining=1, base=384):
                     'visible_pts': visiblepts,
                     'marked_index': marked_ids
                 }
+
+
+def densereg_face_iterator(istraining, db='helen'):
+
+    database_path = Path(
+        '/vol/atlas/homes/yz4009/databases/DenseReg/FaceRegDataset') / db
+    landmarks_path = Path('/vol/atlas/databases') / db
+
+    image_folder = 'Images_Resized'
+    uv_folder = 'Labels_Resized'
+    z_folder = 'Labels_Resized'
+
+    if istraining == 1:
+        database_path = database_path / 'trainset'
+        landmarks_path = landmarks_path / 'trainset'
+    elif istraining == 0:
+        database_path = database_path / 'testset'
+        landmarks_path = landmarks_path / 'testset'
+
+
+    for pimg in print_progress(mio.import_images(database_path / image_folder / image_folder)):
+
+        image_name = pimg.path.stem
+
+        # load iuv data
+        labels = sio.loadmat(
+            str(database_path / uv_folder / uv_folder / ('%s.mat' % image_name)))
+        iuv = Image(np.stack([
+            (labels['LabelsH_resized'] >= 0).astype(np.float32),
+            labels['LabelsH_resized'],
+            labels['LabelsV_resized']
+        ]).clip(0, 1))
+
+        # load lms data
+        try:
+            orig_image = mio.import_image(
+                landmarks_path / ('%s.jpg' % image_name))
+        except:
+            orig_image = mio.import_image(
+                landmarks_path / ('%s.png' % image_name))
+
+        orig_image = orig_image.resize(pimg.shape)
+
+        pimg.landmarks['JOINT'] = orig_image.landmarks['PTS']
+
+        pimg, *_ = utils.crop_image_bounding_box(
+            pimg,
+            pimg.landmarks['JOINT'].bounding_box(),
+            [384, 384],
+            base=256)
+
+        iuv, *_ = utils.crop_image_bounding_box(
+            iuv,
+            pimg.landmarks['JOINT'].bounding_box(),
+            [384, 384],
+            base=256)
+
+        yield {
+            'image': pimg,
+            'iuv': iuv,
+            'visible_pts': np.array(list(range(68))),
+            'marked_index': np.array(list(range(68)))
+        }

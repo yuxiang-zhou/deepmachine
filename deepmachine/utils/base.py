@@ -8,7 +8,7 @@ from pathlib import Path
 from scipy.io import loadmat
 from menpo.image import Image
 from menpo.shape import PointCloud
-from menpo.transform import Translation
+from menpo.transform import Translation, Scale
 
 
 slim = tf.contrib.slim
@@ -92,3 +92,48 @@ def tf_image_batch_to_grid(images, col_size=4):
         tf.transpose(tfimg, [1, 0, 2, 3]), [h * image_height, w * image_width, image_channels])
 
     return tfimg
+
+
+def tf_records_iterator(path, feature=None):
+
+    record_iterator = tf.python_io.tf_record_iterator(path=path)
+    for string_record in record_iterator:
+        example = tf.train.Example()
+        example.ParseFromString(string_record)
+
+        yield example.features.feature
+
+
+def crop_image_bounding_box(img, bbox, res, base=200., order=1):
+
+    center = bbox.centre()
+    bmin, bmax = bbox.bounds()
+    scale = np.linalg.norm(bmax - bmin) / base
+
+    return crop_image(img, center, scale, res, order=order)
+
+
+def crop_image(img, center, scale, res, base=384., order=1):
+    h = base * scale
+
+    t = Translation(
+        [
+            res[0] * (-center[0] / h + .5),
+            res[1] * (-center[1] / h + .5)
+        ]).compose_after(Scale((res[0] / h, res[1] / h))).pseudoinverse()
+
+    # Upper left point
+    ul = np.floor(t.apply([0, 0]))
+    # Bottom right point
+    br = np.ceil(t.apply(res).astype(np.int))
+
+    # crop and rescale
+
+    cimg, trans = img.warp_to_shape(
+        br - ul, Translation(-(br - ul) / 2 + (br + ul) / 2), return_transform=True)
+    c_scale = np.min(cimg.shape) / np.mean(res)
+    new_img = cimg.rescale(1 / c_scale, order=order).resize(res, order=order)
+
+    trans = trans.compose_after(Scale([c_scale, c_scale]))
+
+    return new_img, trans, c_scale

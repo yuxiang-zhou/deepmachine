@@ -1,5 +1,6 @@
 import numpy as np
 import binascii
+import tensorflow as tf
 from menpo.compatibility import unicode
 from struct import pack as struct_pack
 
@@ -23,7 +24,8 @@ def sample_colours_from_colourmap(n_colours, colour_map):
     for i in range(n_colours):
         c = cm(1. * i / n_colours)[:3]
         colours.append(decode_colour([int(i * 255) for i in c]))
-    return colours
+
+    return np.array([hex_to_rgb(x) for x in colours])
 
 
 def iuv_rgb(iuv, colour_set='jet'):
@@ -43,14 +45,29 @@ def iuv_rgb(iuv, colour_set='jet'):
         u[index != i, i] = 0
         v[index != i, i] = 0
 
-    colours = np.array(
-        [hex_to_rgb(x)
-         for x
-         in sample_colours_from_colourmap(
-            n_channel, colour_set
-        )])
+    colours = sample_colours_from_colourmap(
+        n_channel, colour_set
+    )
 
     return (u.dot(colours) / 255. + v.dot(colours) / 255.) / 2.
+
+def tf_iuv_rgb(tf_iuv, n_feature=26, colour_set='jet'):
+    iuv_cm = sample_colours_from_colourmap(n_feature, colour_set).astype(np.float32)
+    tf_iuv_cm = tf.constant(iuv_cm)
+    
+    tf_iuv_class = tf_iuv[...,:n_feature]
+    tf_iuv_class = tf.argmax(tf_iuv_class, axis=-1)
+    tf_iuv_class = tf.one_hot(tf_iuv_class, n_feature)
+    
+    tf_u = tf_iuv_class * tf_iuv[...,n_feature:n_feature*2]
+    tf_v = tf_iuv_class * tf_iuv[...,n_feature*2:]
+    
+    tf_u = tf.tensordot(tf_u, tf_iuv_cm, axes=1)
+    tf_v = tf.tensordot(tf_v, tf_iuv_cm, axes=1)
+    
+    tf_img = (tf_u + tf_v) / 2. / 255.
+
+    return tf_img
 
 
 def hex_to_rgb(hex_str):
@@ -73,7 +90,8 @@ def svs_rgb(pixels,
             crop=False,
             render_pts=True,
             alpha=1):
-    colours = np.array([hex_to_rgb(x)
-                        for x in sample_colours_from_colourmap(7, 'Set2')])
+    colours = colours = sample_colours_from_colourmap(
+        n_channel, colour_set
+    )
 
     return pixels.dot(colours) / 255.
