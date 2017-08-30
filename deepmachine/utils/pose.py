@@ -358,24 +358,6 @@ def get_weight(keypoints, mask=None, ng_w=0.01, ps_w=1.0):
     return weights
 
 
-def ced_accuracy(t, dists):
-    # Head	 Shoulder	Elbow	Wrist	Hip	   Knee	   Ankle
-    pts_r = tf.transpose(
-        tf.gather(tf.transpose(dists), [8, 12, 11, 10, 2, 1, 0]))
-    pts_l = tf.transpose(
-        tf.gather(tf.transpose(dists), [9, 13, 14, 15, 3, 4, 5]))
-    part_pckh = (tf.to_int32(pts_r <= t) + tf.to_int32(pts_l <= t)) / 2
-
-    return tf.concat([part_pckh, tf.reduce_sum(tf.to_int32(dists <= t), 1)[..., None] / tf.shape(dists)[1]], 1)
-
-
-def pckh(preds, gts, scales):
-    t_range = np.arange(0, 0.51, 0.01)
-    dists = tf.sqrt(tf.reduce_sum(tf.pow(preds - gts, 2),
-                                  reduction_indices=-1)) / scales
-    return ced_accuracy(0.5, dists)
-
-
 def tf_atan2(y, x):
     angle = tf.where(tf.greater(x, 0.0), tf.atan(y / x), tf.zeros_like(x))
     angle = tf.where(tf.greater(y, 0.0), 0.5 * np.pi - tf.atan(x / y), angle)

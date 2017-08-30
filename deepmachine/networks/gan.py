@@ -55,32 +55,68 @@ def GAN(
 
 
 def CycleGAN(inputs, is_training=True, n_channels=3, **kwargs):
-    states = {}
+    with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
+        states = {}
 
-    # inputs
-    input_A = inputs[..., :n_channels]
-    input_B = inputs[..., n_channels:]
+        # inputs
+        input_A = inputs[..., :n_channels]
+        input_B = inputs[..., n_channels:]
 
-    # generators
-    states['fake_B'] = fake_B = gan.generator_resnet(
-        input_A, n_channels, reuse=False, name="generatorAB")
-    states['fake_A'] = fake_A = gan.generator_resnet(
-        input_B, n_channels, reuse=False, name="generatorBA")
-    states['rec_A'] = gan.generator_resnet(
-        fake_B, n_channels, reuse=True, name="generatorBA")
-    states['rec_B'] = gan.generator_resnet(
-        fake_A, n_channels, reuse=True, name="generatorAB")
+        # generators
+        states['fake_B'] = fake_B = gan.generator_resnet(
+            input_A, n_channels, reuse=False, name="generatorAB")
+        states['fake_A'] = fake_A = gan.generator_resnet(
+            input_B, n_channels, reuse=False, name="generatorBA")
+        states['rec_A'] = gan.generator_resnet(
+            fake_B, n_channels, reuse=True, name="generatorBA")
+        states['rec_B'] = gan.generator_resnet(
+            fake_A, n_channels, reuse=True, name="generatorAB")
 
-    # discriminators
-    states['disc_A_real'] = gan.discriminator(
-        input_A, reuse=False, name='discriminatorA')
-    states['disc_A_fake'] = gan.discriminator(
-        fake_A, reuse=True, name='discriminatorA')
-    states['disc_B_real'] = gan.discriminator(
-        input_B, reuse=False, name='discriminatorB')
-    states['disc_B_fake'] = gan.discriminator(
-        fake_B, reuse=True, name='discriminatorB')
+        # discriminators
+        states['disc_A_real'] = gan.discriminator(
+            input_A, reuse=False, name='discriminatorA')
+        states['disc_A_fake'] = gan.discriminator(
+            fake_A, reuse=True, name='discriminatorA')
+        states['disc_B_real'] = gan.discriminator(
+            input_B, reuse=False, name='discriminatorB')
+        states['disc_B_fake'] = gan.discriminator(
+            fake_B, reuse=True, name='discriminatorB')
 
-    prediction = tf.concat([states['fake_B'], states['fake_A']], 3)
+        prediction = tf.concat([states['fake_B'], states['fake_A']], 3)
 
-    return prediction, states
+        return prediction, states
+
+
+def CycleGANHG(inputs, is_training=True, n_channels=3, **kwargs):
+
+    with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
+        with slim.arg_scope(gan.gan_arg_scope_tf()):
+            states = {}
+
+            # inputs
+            input_A = inputs[..., :n_channels]
+            input_B = inputs[..., n_channels:]
+
+            # generators
+            states['fake_B'] = fake_B = gan.generator(
+                input_A, n_channels, reuse=False, name="generatorAB")
+            states['fake_A'] = fake_A = gan.generator(
+                input_B, n_channels, reuse=False, name="generatorBA")
+            states['rec_A'] = gan.generator(
+                fake_B, n_channels, reuse=True, name="generatorBA")
+            states['rec_B'] = gan.generator(
+                fake_A, n_channels, reuse=True, name="generatorAB")
+
+            # discriminators
+            states['disc_A_real'] = gan.discriminator(
+                input_A, reuse=False, name='discriminatorA')
+            states['disc_A_fake'] = gan.discriminator(
+                fake_A, reuse=True, name='discriminatorA')
+            states['disc_B_real'] = gan.discriminator(
+                input_B, reuse=False, name='discriminatorB')
+            states['disc_B_fake'] = gan.discriminator(
+                fake_B, reuse=True, name='discriminatorB')
+
+            prediction = tf.concat([states['fake_B'], states['fake_A']], 3)
+
+            return prediction, states

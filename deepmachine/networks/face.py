@@ -32,7 +32,7 @@ def DenseRegFace(
             _, net = models.hourglass(
                 net,
                 regression_channels=0,
-                classification_channels=n_classes*2,
+                classification_channels=n_classes * 2,
                 deconv=deconv)
 
             states['uv'] = net
@@ -41,7 +41,8 @@ def DenseRegFace(
 
             return prediction, states
 
+
 DenseFaceCascade = functools.partial(
     DenseIUVLandmark,
     n_landmarks=68
-    )
+)

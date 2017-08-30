@@ -53,14 +53,24 @@ def loss_cyclegan_discriminator(data_eps, network_eps):
 
     _, states = network_eps
 
+    # discriminator B losses
     DB_fake = states['disc_B_fake']
-    DA_fake = states['disc_A_fake']
     DB_real = states['disc_B_real']
-    DA_real = states['disc_A_real']
+    
 
     db_loss_real = mae_criterion(DB_real, tf.ones_like(DB_real))
     db_loss_fake = mae_criterion(DB_fake, tf.zeros_like(DB_fake))
     db_loss = (db_loss_real + db_loss_fake) / 2.
+    
+    tf.losses.add_loss(db_loss, loss_collection='discriminator_loss_B')
+    tf.losses.add_loss(db_loss)
+    tf.summary.scalar('losses/discriminator_B', db_loss)
+
+    # discriminator A losses
+
+    DA_fake = states['disc_A_fake']
+    DA_real = states['disc_A_real']
+
     da_loss_real = mae_criterion(DA_real, tf.ones_like(DA_real))
     da_loss_fake = mae_criterion(DA_fake, tf.zeros_like(DA_fake))
     da_loss = (da_loss_real + da_loss_fake) / 2.
@@ -69,9 +79,7 @@ def loss_cyclegan_discriminator(data_eps, network_eps):
     tf.losses.add_loss(da_loss)
     tf.summary.scalar('losses/discriminator_A', da_loss)
 
-    tf.losses.add_loss(db_loss, loss_collection='discriminator_loss_B')
-    tf.losses.add_loss(db_loss)
-    tf.summary.scalar('losses/discriminator_B', db_loss)
+    
 
 
 def loss_cyclegan_generator(data_eps, network_eps, n_channels=3, L1_lambda=10.):

@@ -408,3 +408,45 @@ def densereg_face_iterator(istraining, db='helen'):
             'visible_pts': np.array(list(range(68))),
             'marked_index': np.array(list(range(68)))
         }
+
+
+def densereg_pose_iterator():
+    database_path = Path(
+        '/vol/atlas/homes/yz4009/databases/DenseReg/IBUG_UP_DATA/')
+    image_path = database_path / 'ProcessImagesStatic'
+    iuv_path = database_path / 'Processed_correspondence_Static'
+    
+    iuv_map = sio.loadmat(str(database_path/'GMDS.mat'))
+    index_i, index_u, index_v = iuv_map['Index'].squeeze(),iuv_map['Final_U'].squeeze(),iuv_map['Final_V'].squeeze()
+    index_i = np.concatenate([[0], index_i])
+    index_u = np.concatenate([[0], index_u])
+    index_v = np.concatenate([[0], index_v])
+
+    for pimg in print_progress(mio.import_images(image_path)[1:]):
+
+        image_name = pimg.path.stem
+        bbox = PointCloud(pimg.bounds()).bounding_box()
+        # load iuv data
+        iuv_mat = sio.loadmat(
+            str(iuv_path / ('%s.mat' % image_name)))['I_correspondence']
+        iuv = Image(np.stack([index_i[iuv_mat], index_u[iuv_mat] * 255, index_v[iuv_mat]*255]).astype(np.uint8))
+
+        # load lms data
+
+        pimg, *_ = utils.crop_image_bounding_box(
+            pimg,
+            bbox,
+            [384, 384],
+            base=256)
+
+        iuv, *_ = utils.crop_image_bounding_box(
+            iuv,
+            bbox,
+            [384, 384],
+            base=256,
+            order=0)
+        
+        yield {
+            'image': pimg,
+            'iuv': iuv
+        }

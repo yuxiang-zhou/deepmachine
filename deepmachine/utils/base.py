@@ -137,3 +137,26 @@ def crop_image(img, center, scale, res, base=384., order=1):
     trans = trans.compose_after(Scale([c_scale, c_scale]))
 
     return new_img, trans, c_scale
+
+
+def normalized_point_to_point_error(preds, gts, factor=1):
+    dists = tf.sqrt(tf.reduce_sum(tf.pow(preds - gts, 2),
+                                  reduction_indices=-1)) / factor
+    return dists
+
+
+def pckh(preds, gts, scales):
+    t_range = np.arange(0, 0.51, 0.01)
+    dists = normalized_point_to_point_error(preds, gts, factor=scales)
+    return ced_accuracy(0.5, dists)
+
+
+def ced_accuracy(t, dists):
+    # Head	 Shoulder	Elbow	Wrist	Hip	   Knee	   Ankle
+    pts_r = tf.transpose(
+        tf.gather(tf.transpose(dists), [8, 12, 11, 10, 2, 1, 0]))
+    pts_l = tf.transpose(
+        tf.gather(tf.transpose(dists), [9, 13, 14, 15, 3, 4, 5]))
+    part_pckh = (tf.to_int32(pts_r <= t) + tf.to_int32(pts_l <= t)) / 2
+
+    return tf.concat([part_pckh, tf.reduce_sum(tf.to_int32(dists <= t), 1)[..., None] / tf.shape(dists)[1]], 1)

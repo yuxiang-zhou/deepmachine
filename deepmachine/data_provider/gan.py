@@ -28,7 +28,7 @@ def dummy_resolver(_, *args, **kwargs):
 
 
 def cyclegan_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1])):
-    image = tf.image.decode_png(content)
+    image = tf.image.decode_jpeg(content)
     image_height = tf.shape(image)[0]
     image_width = tf.shape(image)[1]
     image_channels = tf.shape(image)[2]
@@ -36,7 +36,7 @@ def cyclegan_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0,
     image = tf.cond(image_channels > 1,
                     lambda: image,
                     lambda: tf.image.grayscale_to_rgb(image))
-    image = tf.to_float(image) / 255. * 2 - 1
+    image = tf.to_float(image) / 255. * 2. - 1.
 
     # augmentation
     image = tf.image.random_flip_left_right(image)

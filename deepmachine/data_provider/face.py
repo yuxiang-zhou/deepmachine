@@ -302,14 +302,14 @@ ResolverIUV = {
 
 
 DenseFaceCascadeProvider = functools.partial(
-    TFRecordIUVProvider,
+    TFRecordNoFlipProvider,
     features=FeatureIUV,
     augmentation=True,
     resolvers=ResolverIUV
 )
 
 HeatmapFaceProvider = functools.partial(
-    TFRecordIUVProvider,
+    TFRecordNoFlipProvider,
     features=FeatureHeatmap,
     augmentation=True,
     resolvers=ResolverHM

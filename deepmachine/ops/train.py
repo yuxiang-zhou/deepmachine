@@ -86,7 +86,7 @@ def gan(
         variables_to_train=disc_variables_to_train,
         summarize_gradients=True)
 
-    train_op = gen_train_op + disc_train_op
+    train_op = [gen_train_op, disc_train_op]
 
     return train_op
 
@@ -129,6 +129,7 @@ def cyclegan(
     train_op = []
     for loss, vname in zip(losses_all, variables_prefixes):
         variables_to_train = [v for v in train_variables if v.name.startswith(vname)]
+        print('# of %s variables:%d'%(vname, len(variables_to_train)))
         optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5)
         t_op = slim.learning.create_train_op(
             loss,
@@ -138,4 +139,4 @@ def cyclegan(
 
         train_op.append(t_op)
             
-    return sum(train_op)
+    return train_op

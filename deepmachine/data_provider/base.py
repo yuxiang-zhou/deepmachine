@@ -22,10 +22,10 @@ class Provider():
             ], 0)
 
     def get(self, *keys):
-        pass
+        raise NotImplementedError
 
     def size(self):
-        pass
+        raise NotImplementedError
 
 
 class TFRecordProvider(Provider):
@@ -40,6 +40,7 @@ class TFRecordProvider(Provider):
         self._batch_size = batch_size
         self._augmentation = augmentation
         self._key_resolver = resolvers
+        self._count = None
 
     def register_key_resolver(self, key, resolver):
         self._key_resolver[key] = resolver
@@ -60,6 +61,15 @@ class TFRecordProvider(Provider):
 
         return retval
 
+    def size(self):
+        if self._count is None:
+            self._count = 0
+            for fn in str(self._filename).split(','):
+                w_it = utils.tf_records_iterator(fn)
+                self._count += len([1 for _ in w_it])
+
+        return self._count
+
     def _get_features(self, serialized_example):
         features = tf.parse_single_example(
             serialized_example,
@@ -69,9 +79,9 @@ class TFRecordProvider(Provider):
 
     # Data from protobuff
     def _get_data_protobuff(self, filename, *keys):
-        filename = str(filename).split(',')
+        filenames = str(filename).split(',')
         filename_queue = tf.train.string_input_producer(
-            filename, num_epochs=None)
+            filenames, num_epochs=None)
 
         reader = tf.TFRecordReader()
         _, serialized_example = reader.read(filename_queue)
@@ -90,7 +100,7 @@ class TFRecordProvider(Provider):
         return data
 
 
-class TFRecordIUVProvider(TFRecordProvider):
+class TFRecordNoFlipProvider(TFRecordProvider):
     def _random_augmentation(self):
         return super()._random_augmentation() - tf.constant([1., 0., 0., 0.])
 
@@ -111,8 +121,16 @@ class TFDirectoryProvider(Provider):
         self._augmentation = augmentation
         self._ext = ext
         self._key_resolver = resolvers
-
+        self._count = None
         self.no_processes = no_processes
+
+    def size(self):
+        if self._count is None:
+            self._count = 0
+            for path in self._dirpath.split(','):
+                self._count += len(list(Path(self._dirpath).glob('*.jpg')))
+
+        return self._count
 
     def get(self, *keys):
 
@@ -121,7 +139,7 @@ class TFDirectoryProvider(Provider):
             filelist += list(map(str, Path(self._dirpath).glob('*.jpg')))
 
         tf_filelist = tf.convert_to_tensor(filelist)
-        self.n_items = n_items = len(filelist)
+        self._count = n_items = len(filelist)
         print('Number of items: %d' % n_items)
 
         producer = tf.train.string_input_producer(
@@ -174,12 +192,20 @@ class TFDirectoryProvider(Provider):
         return retval
 
 
-class DatasetMixer():
+class DatasetMixer(Provider):
     def __init__(self,
                  providers,
                  batch_size=1):
         self.providers = providers
         self.batch_size = batch_size
+        self._count = None
+
+    def size(self):
+        if self._count is None:
+            self._count = 0
+            self._count += sum([p.size() for p in self.providers])
+
+        return self._count
 
     def get(self, *keys):
 
@@ -219,12 +245,20 @@ class DatasetMixer():
         return ret_dict
 
 
-class DatasetPairer():
+class DatasetPairer(Provider):
     def __init__(self,
                  providers,
                  batch_size=1):
         self.providers = providers
         self.batch_size = batch_size
+        self._count = None
+
+    def size(self):
+        if self._count is None:
+            self._count = 0
+            self._count = min([p.size() for p in self.providers])
+
+        return self._count
 
     def get(self, *keys):
         queue = None
@@ -451,13 +485,18 @@ def heatmap_resolver_face(features, aug=False, aug_args=tf.constant([0, 0, 1])):
     return gt_heatmap
 
 
-def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1]), n_parts=26):
+def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1]),
+                 n_parts=26, from_image=False, dtype=tf.int64):
     # load features
     image_height = tf.to_int32(features['height'])
     image_width = tf.to_int32(features['width'])
-    iuv = tf.to_int32(tf.decode_raw(features['iuv'], tf.int64))
     iuv_height = tf.to_int32(features['iuv_height'])
     iuv_width = tf.to_int32(features['iuv_height'])
+
+    if from_image:
+        iuv = tf.image.decode_jpeg(features['iuv'], channels=3)
+    else:
+        iuv = tf.to_int32(tf.decode_raw(features['iuv'], dtype))
 
     # formation
     iuv = tf.to_float(iuv)
@@ -576,7 +615,7 @@ def iuv_resolver_face(features, aug=False, aug_args=tf.constant([0, 0, 1])):
 
 
 def image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1])):
-    image = tf.image.decode_png(content)
+    image = tf.image.decode_jpeg(content)
     image_height = tf.shape(image)[0]
     image_width = tf.shape(image)[1]
     image_channels = tf.shape(image)[2]

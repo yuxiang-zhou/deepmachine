@@ -93,7 +93,7 @@ def generator(inputs, output_dim, deconv='transpose+conv', bottleneck='bottlenec
 gan_arg_scope_tf = hourglass_arg_scope_tf
 
 
-def generator_resnet(image, output_dim, gf_dim=64, reuse=False, name="generator"):
+def generator_resnet(image, output_dim, gf_dim=32, reuse=False, name="generator"):
 
     with tf.variable_scope(name):
         # image is 256 x 256 x input_c_dim

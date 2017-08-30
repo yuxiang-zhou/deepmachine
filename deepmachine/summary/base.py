@@ -65,19 +65,19 @@ def summary_iuv(data_eps, network_eps, is_training=True):
         max_outputs=3)
 
 
-def summary_landmarks(data_eps, network_eps, is_training=True):
+def summary_landmarks(data_eps, network_eps, is_training=True, n_channel=16):
     gt_heatmap = data_eps['heatmap']
     predictions, _ = network_eps
 
     # landmarks summary
     tf.summary.image(
         'predictions/landmark-regression',
-        tf.reduce_sum(predictions, -1)[..., None],
+        utils.tf_n_channel_rgb(predictions, n_channel),
         max_outputs=3)
 
     tf.summary.image(
         'gt/landmark-regression',
-        tf.reduce_sum(gt_heatmap, -1)[..., None],
+        utils.tf_n_channel_rgb(gt_heatmap, n_channel),
         max_outputs=3)
 
 

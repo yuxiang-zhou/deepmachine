@@ -1,9 +1,12 @@
 import tensorflow as tf
 import warnings
 import os
+import functools
+
+from pathlib import Path
+
 slim = tf.contrib.slim
 
-import functools
 from .flags import FLAGS
 from . import ops
 from . import summary
@@ -25,6 +28,10 @@ class DeepMachine(object):
                  ):
         # config
         tf.logging.set_verbosity(FLAGS.logging_level)
+
+        self._config = tf.ConfigProto(
+            allow_soft_placement=True
+        )
 
         # dynamic ops
         self._loss_ops = losses_ops
@@ -62,6 +69,14 @@ class DeepMachine(object):
 
     @restore_path.setter
     def restore_path(self, value):
+
+        if value is not None:
+
+            path = Path(value)
+
+            if path.is_dir():
+                value = tf.train.latest_checkpoint(value)
+
         self.__restore_path = value
         self._reset_graph()
 
@@ -99,17 +114,21 @@ class DeepMachine(object):
         self._summary_ops.append(op)
 
     def train(self,
+              train_data_op,
+              db_size,
               saver=None,
-              train_data_op=_undefined_op,
               train_dir=FLAGS.train_dir,
-              number_of_steps=int(FLAGS.number_of_epochs * FLAGS.db_size // FLAGS.batch_size),
               log_every_n_steps=FLAGS.log_every_n_steps,
               initial_learning_rate=FLAGS.initial_learning_rate * FLAGS.batch_size,
-              learning_rate_decay_step=int(FLAGS.db_size // FLAGS.batch_size),
               batch_size=FLAGS.batch_size,
               learning_rate_decay_factor=FLAGS.learning_rate_decay_factor,
-              moving_average_ckpt=FLAGS.moving_average_ckpt
+              moving_average_ckpt=FLAGS.moving_average_ckpt,
+              number_of_epochs=FLAGS.number_of_epochs
               ):
+
+        # parameters
+        number_of_steps = number_of_epochs * db_size // batch_size
+        learning_rate_decay_step = db_size // batch_size
 
         if number_of_steps == 0:
             number_of_steps = None
@@ -132,20 +151,24 @@ class DeepMachine(object):
             for op in self._loss_ops:
                 op(data_eps, net_eps)
 
-            # total losses
-            total_loss = tf.losses.get_total_loss()
-
             # global_step
             self._global_step = slim.get_or_create_global_step()
 
             # train_op
-            self._train_op = self.train_op(
+            self._train_ops = self.train_op(
                 initial_learning_rate=initial_learning_rate,
                 learning_rate_decay_step=learning_rate_decay_step,
                 batch_size=batch_size,
                 learning_rate_decay_factor=learning_rate_decay_factor,
                 moving_average_ckpt=moving_average_ckpt
             )
+
+            if type(self._train_ops) is list:
+                if not number_of_steps is None:
+                    number_of_steps *= len(self._train_ops)
+                self._train_ops = sum(self._train_ops)
+
+            print('Total # of Steps: %d' % number_of_steps)
 
             # summaries
             for op in self._summary_ops:
@@ -155,12 +178,13 @@ class DeepMachine(object):
 
         # start session
         with self._train_graph.as_default():
-            with tf.Session(graph=self._train_graph) as sess:
+            with tf.Session(graph=self._train_graph,
+                            config=self._config) as sess:
 
                 # init and start
                 init_fn = self.init_op()
 
-                slim.learning.train(self._train_op,
+                slim.learning.train(self._train_ops,
                                     train_dir,
                                     save_summaries_secs=60,
                                     init_fn=init_fn,
@@ -201,20 +225,20 @@ class DeepMachine(object):
                     summary_op=tf.summary.merge(summary_ops),
                     eval_interval_secs=30)
 
-    def run_one(self, data, type=tf.float32):
-        return self._run(data, type=type)
+    def run_one(self, data, dtype=tf.float32):
+        return self._run(data, dtype=dtype)
 
-    def run_batch(self, data, type=tf.float32):
-        return self._run(data, type=type)
+    def run_batch(self, data, dtype=tf.float32):
+        return self._run(data, dtype=dtype)
 
-    def _run(self, data, type):
+    def _run(self, data, dtype):
         # build graph if needed
         if self._run_graph is None:
             with tf.Graph().as_default() as g:
 
                 # inputs placeholder
                 tfinputs = tf.placeholder(
-                    type,
+                    dtype,
                     shape=(None, None, None, data.shape[-1]),
                     name='inputs'
                 )

@@ -20,7 +20,7 @@ from .base import *
 slim = tf.contrib.slim
 
 
-FeatureIUV = {
+FeatureIUVHM = {
     # images
     'image': tf.FixedLenFeature([], tf.string),
     'height': tf.FixedLenFeature([], tf.int64),
@@ -48,6 +48,17 @@ FeatureIUV = {
     'restore_scale': tf.FixedLenFeature([], tf.float32)
 }
 
+FeatureIUV = {
+    # images
+    'image': tf.FixedLenFeature([], tf.string),
+    'height': tf.FixedLenFeature([], tf.int64),
+    'width': tf.FixedLenFeature([], tf.int64),
+    # iuv
+    'iuv': tf.FixedLenFeature([], tf.string),
+    'iuv_height': tf.FixedLenFeature([], tf.int64),
+    'iuv_width': tf.FixedLenFeature([], tf.int64),
+}
+
 FeatureHeatmap = {
     # images
     'image': tf.FixedLenFeature([], tf.string),
@@ -66,18 +77,30 @@ ResolverHM = {
     'heatmap': heatmap_resolver_pose,
 }
 
-ResolverIUV = {
+ResolverIUVHM = {
     'inputs': image_resolver,
     'heatmap': heatmap_resolver_pose,
     'iuv': iuv_resolver
 }
 
+ResolverIUV = {
+    'inputs': image_resolver,
+    'iuv': functools.partial(iuv_resolver, from_image=False, dtype=tf.uint8)
+}
 
-DensePoseProvider = functools.partial(
-    TFRecordIUVProvider,
+
+DenseRegPoseProvider = functools.partial(
+    TFRecordNoFlipProvider,
     features=FeatureIUV,
     augmentation=True,
     resolvers=ResolverIUV
+)
+
+DensePoseProvider = functools.partial(
+    TFRecordNoFlipProvider,
+    features=FeatureIUVHM,
+    augmentation=True,
+    resolvers=ResolverIUVHM
 )
 
 HeatmapProvider = functools.partial(
