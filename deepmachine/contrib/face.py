@@ -20,40 +20,49 @@ from ..flags import FLAGS
 
 
 
-def get_densereg_pose(n_classes=26, use_regression=True):
+# faces
+
+def get_hourglass_face():
     # create machine
     model = deepmachine.DeepMachine(
         network_op=functools.partial(
-            networks.pose.DenseRegPose,
-            n_classes=n_classes,
-            deconv='transpose+conv+relu',
-            bottleneck='bottleneck_inception'
+            networks.base.StackedHourglass,
+            n_channels=68,
+            n_stacks=2,
+            deconv='transpose+conv+relu'
         )
     )
 
     # add losses
-    model.add_loss_op(losses.loss_iuv_regression)
+    model.add_loss_op(losses.loss_stacked_landmark_regression)
 
     # add summaries
-    model.add_summary_op(summary.summary_iuv)
+    model.add_summary_op(summary.summary_landmarks)
+
+    # set evaluation op
+    model.eval_op = ops.eval.face_nmse
 
     return model
 
 
-def get_densereg_face(n_classes=11, use_regression=False):
+def get_dense_cascade_face():
     # create machine
     model = deepmachine.DeepMachine(
         network_op=functools.partial(
-            networks.face.DenseRegFace,
-            n_classes=FLAGS.quantization_step + 1,
-            deconv='transpose+conv'
+            networks.face.DenseFaceCascade,
+            n_features=(FLAGS.quantization_step + 1) * 2,
+            deconv='transpose+conv+relu'
         )
     )
 
     # add losses
+    model.add_loss_op(losses.loss_landmark_regression)
     model.add_loss_op(losses.loss_uv_classification)
 
     # add summaries
-    model.add_summary_op(summary.summary_uv)
+    model.add_summary_op(summary.summary_landmarks)
+
+    # set evaluation op
+    model.eval_op = ops.eval.face_nmse
 
     return model

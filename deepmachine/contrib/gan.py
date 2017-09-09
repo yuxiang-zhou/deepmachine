@@ -19,41 +19,47 @@ from .. import networks
 from ..flags import FLAGS
 
 
+# general
 
-def get_densereg_pose(n_classes=26, use_regression=True):
+def get_cyclegan():
     # create machine
     model = deepmachine.DeepMachine(
         network_op=functools.partial(
-            networks.pose.DenseRegPose,
-            n_classes=n_classes,
-            deconv='transpose+conv+relu',
-            bottleneck='bottleneck_inception'
+            networks.gan.CycleGAN,
+            n_channels=3
         )
     )
 
     # add losses
-    model.add_loss_op(losses.loss_iuv_regression)
+    model.add_loss_op(losses.loss_cyclegan_discriminator)
+    model.add_loss_op(losses.loss_cyclegan_generator)
 
     # add summaries
-    model.add_summary_op(summary.summary_iuv)
+    model.add_summary_op(summary.summary_cyclegan)
+
+    # set ops
+    model.train_op = ops.train.cyclegan
 
     return model
 
 
-def get_densereg_face(n_classes=11, use_regression=False):
+def get_cyclegan_hg():
     # create machine
     model = deepmachine.DeepMachine(
         network_op=functools.partial(
-            networks.face.DenseRegFace,
-            n_classes=FLAGS.quantization_step + 1,
-            deconv='transpose+conv'
+            networks.gan.CycleGANHG,
+            n_channels=3
         )
     )
 
     # add losses
-    model.add_loss_op(losses.loss_uv_classification)
+    model.add_loss_op(losses.loss_cyclegan_discriminator)
+    model.add_loss_op(losses.loss_cyclegan_generator)
 
     # add summaries
-    model.add_summary_op(summary.summary_uv)
+    model.add_summary_op(summary.summary_cyclegan)
+
+    # set ops
+    model.train_op = ops.train.cyclegan
 
     return model

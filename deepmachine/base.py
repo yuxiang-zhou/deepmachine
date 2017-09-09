@@ -20,7 +20,7 @@ class DeepMachine(object):
     """docstring for DeepMachine"""
 
     def __init__(self,
-                 network_op=_undefined_op,
+                 network_op,
                  restore_path=None,
                  summary_ops=[],
                  losses_ops=[],
@@ -207,7 +207,7 @@ class DeepMachine(object):
             data_eps = eval_data_op()
 
             # Define model graph.
-            net_eps = self.network_op(data_eps['inputs'], is_training=False)
+            net_eps = self.network_op(data_eps['inputs'], is_training=False, data_eps=data_eps)
 
         self._test_graph = g
 
@@ -225,13 +225,13 @@ class DeepMachine(object):
                     summary_op=tf.summary.merge(summary_ops),
                     eval_interval_secs=30)
 
-    def run_one(self, data, dtype=tf.float32):
-        return self._run(data, dtype=dtype)
+    def run_one(self, data, dtype=tf.float32, **kwargs):
+        return self._run(data, dtype=dtype, **kwargs)
 
-    def run_batch(self, data, dtype=tf.float32):
-        return self._run(data, dtype=dtype)
+    def run_batch(self, data, dtype=tf.float32, **kwargs):
+        return self._run(data, dtype=dtype, **kwargs)
 
-    def _run(self, data, dtype):
+    def _run(self, data, dtype, **kwargs):
         # build graph if needed
         if self._run_graph is None:
             with tf.Graph().as_default() as g:
@@ -245,7 +245,7 @@ class DeepMachine(object):
 
                 # Define model graph.
                 self._run_net_eps = self.network_op(
-                    tfinputs, is_training=False)
+                    tfinputs, is_training=False, **kwargs)
 
                 self._run_saver = None
                 variables_to_restore = slim.get_variables_to_restore()

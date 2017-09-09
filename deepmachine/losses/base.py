@@ -6,20 +6,23 @@ from .. import utils
 from ..flags import FLAGS
 
 
-def loss_landmark_regression(data_eps, network_eps, heatmap_weight=500):
+def loss_landmark_regression(data_eps, network_eps, alpha=1.0, heatmap_weight=500, collection=None):
     gt_heatmap = data_eps['heatmap']
     predictions, _ = network_eps
 
     # landmark-regression losses
     weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1) * heatmap_weight
     l2norm = slim.losses.mean_squared_error(
-        predictions, gt_heatmap, weights=weight_hm)
+        predictions, gt_heatmap, weights=weight_hm * alpha)
 
     # losses summaries
     tf.summary.scalar('losses/lms_pred', l2norm)
 
+    if collection is not None:
+        tf.losses.add_loss(l2norm, loss_collection=collection)
 
-def loss_stacked_landmark_regression(data_eps, network_eps, heatmap_weight=500):
+
+def loss_stacked_landmark_regression(data_eps, network_eps, alpha=1.0, heatmap_weight=500):
     gt_heatmap = data_eps['heatmap']
     _, states = network_eps
 
@@ -29,13 +32,13 @@ def loss_stacked_landmark_regression(data_eps, network_eps, heatmap_weight=500):
 
         # landmark-regression losses
         l2norm = slim.losses.mean_squared_error(
-            predictions, gt_heatmap, weights=weight_hm)
+            predictions, gt_heatmap, weights=weight_hm * alpha)
 
         # losses summaries
         tf.summary.scalar('losses/lms_stack_%02d' % idx_stack, l2norm)
 
 
-def loss_iuv_regression(data_eps, network_eps, n_feature=26):
+def loss_iuv_regression(data_eps, network_eps, alpha=1.0, n_feature=26):
     cascade_gt = data_eps['iuv']
     _, states = network_eps
 
@@ -45,7 +48,7 @@ def loss_iuv_regression(data_eps, network_eps, n_feature=26):
     uv_pred_idx = cascade_prediction[..., :n_feature]  # 26 channels
     uv_gt_idx = cascade_gt[..., :n_feature]  # 26 channels
 
-    celoss = slim.losses.softmax_cross_entropy(uv_pred_idx, uv_gt_idx)
+    celoss = slim.losses.softmax_cross_entropy(uv_pred_idx, uv_gt_idx) * 5  * alpha
 
     # uv regression losses
     uv_pred = cascade_prediction[..., n_feature:]  # 52 channels
@@ -53,9 +56,9 @@ def loss_iuv_regression(data_eps, network_eps, n_feature=26):
 
     weight_hm = uv_gt_idx * 100
     l1smooth_U = helper.smooth_l1(
-        uv_pred[..., :n_feature], uv_gt[..., :n_feature], weights=weight_hm)
+        uv_pred[..., :n_feature], uv_gt[..., :n_feature], weights=weight_hm * alpha)
     l1smooth_V = helper.smooth_l1(
-        uv_pred[..., n_feature:], uv_gt[..., n_feature:], weights=weight_hm)
+        uv_pred[..., n_feature:], uv_gt[..., n_feature:], weights=weight_hm * alpha)
 
     # losses summaries
     tf.summary.scalar('losses/u_pred', l1smooth_U)
@@ -63,7 +66,7 @@ def loss_iuv_regression(data_eps, network_eps, n_feature=26):
     tf.summary.scalar('losses/uv_cross_entropy', celoss)
 
 
-def loss_uv_classification(data_eps, network_eps):
+def loss_uv_classification(data_eps, network_eps, alpha=1.0):
     k = FLAGS.quantization_step
     uvs = data_eps['uv']
     n_classes = k + 1

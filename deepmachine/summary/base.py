@@ -11,7 +11,7 @@ def summary_input(data_eps, network_eps, is_training=True):
     height = tf.shape(inputs)[1]
     width = tf.shape(inputs)[2]
     channels = tf.shape(inputs)[3]
-    
+
     tf.summary.image(
         'images/batch',
         tf.map_fn(

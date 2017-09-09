@@ -15,6 +15,10 @@ def deconv_layer(net, up_scale, n_channel, method='transpose'):
             up_scale, up_scale), activation_fn=None, padding='VALID')
     elif method == 'transpose+conv':
         net = slim.conv2d_transpose(net, n_channel, (up_scale, up_scale), (
+            up_scale, up_scale), activation_fn=None, padding='VALID')
+        net = slim.conv2d(net, n_channel, (3, 3), (1, 1))
+    elif method == 'transpose+conv+relu':
+        net = slim.conv2d_transpose(net, n_channel, (up_scale, up_scale), (
             up_scale, up_scale), padding='VALID')
         net = slim.conv2d(net, n_channel, (3, 3), (1, 1))
     elif method == 'bilinear':

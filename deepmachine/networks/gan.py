@@ -3,55 +3,81 @@ import numpy as np
 
 from ..flags import FLAGS
 from ..models import gan
+from ..models import stackedHG as shg
+
+from .. import utils
+
 slim = tf.contrib.slim
 
 
 def GAN(
     inputs,
     is_training=True,
-    deconv='bilinear',
-    n_channels=16,
-    n_stacks=2,
-    bottleneck='bottleneck',
+    n_channels=3,
     key_discriminant='inputs',
     **kwargs
 ):
 
-    states = {}
+    with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
+        states = {}
 
-    with tf.variable_scope('generator'):
-        with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
-            with slim.arg_scope(gan.gan_arg_scope_tf()):
-                net = None
+        states['generator'] = gan.generator_resnet(
+            inputs, n_channels, reuse=False, name="generator")
 
-                states['generator'] = []
-                # stacked hourglass
-                for i in range(n_stacks):
-                    with tf.variable_scope('stack_%02d' % i):
-                        if net is not None:
-                            net = tf.concat((inputs, net), 3)
-                        else:
-                            net = inputs
+        states['discriminator_pred'] = gan.discriminator(
+            prediction, name="discriminator")
 
-                        net, _ = gan.generator(
-                            net,
-                            n_channels,
-                            deconv=deconv,
-                            bottleneck=bottleneck)
+        if 'data_eps' in kwargs:
+            inputs = kwargs['data_eps'][key_discriminant]
 
-                        states['generator'].append(net)
-                prediction = net
+        states['discriminator_gt'] = gan.discriminator(
+            inputs, reuse=True, name="discriminator")
 
-    discriminator_pred = gan.discriminator(prediction)
-    states['discriminator_pred'] = discriminator_pred
+        return prediction, states
 
-    if 'data_eps' in kwargs:
-        inputs = kwargs['data_eps'][key_discriminant]
 
-    discriminator_gt = gan.discriminator(inputs, reuse=True)
-    states['discriminator_gt'] = discriminator_gt
+def PoseGAN(
+    inputs,
+    is_training=True,
+    n_channels=16,
+    deconv='bilinear',
+    bottleneck='bottleneck',
+    **kwargs
+):
 
-    return prediction, states
+    with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
+        states = {}
+
+        with slim.arg_scope(gan.gan_arg_scope_tf()):
+            pred_hm = prediction = states['generator'] = gan.generator(
+                inputs, n_channels, deconv=deconv, bottleneck=bottleneck, reuse=False, name="generator")
+
+        gt_hm = kwargs['data_eps']['heatmap']
+
+        pred_lms = utils.tf_heatmap_to_lms(pred_hm)
+        gt_lms = utils.tf_heatmap_to_lms(gt_hm)
+
+        batch_size = tf.shape(inputs)[0]
+
+        pred_patch = tf.map_fn(
+            lambda x: utils.tf_image_patch_around_lms(inputs[x], pred_lms[x]),
+            tf.range(batch_size),
+            dtype=tf.float32
+        )
+
+        gt_patch = tf.map_fn(
+            lambda x: utils.tf_image_patch_around_lms(inputs[x], gt_lms[x]),
+            tf.range(batch_size),
+            dtype=tf.float32
+        )
+
+        states['discriminator_pred'] = gan.discriminator(
+            pred_patch, name="discriminator")
+
+        states['discriminator_gt'] = gan.discriminator(
+            gt_patch, reuse=True, name="discriminator")
+
+        return prediction, states
 
 
 def CycleGAN(inputs, is_training=True, n_channels=3, **kwargs):

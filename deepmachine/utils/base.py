@@ -94,6 +94,20 @@ def tf_image_batch_to_grid(images, col_size=4):
     return tfimg
 
 
+def tf_image_patch_around_lms(image, lms, patch_size=32, dtype=tf.float32):
+
+    pad_size = patch_size // 2 + 1
+    lms = tf.to_int32(lms) + tf.constant([pad_size, pad_size])
+    image = tf.pad(image, [[pad_size, pad_size], [pad_size, pad_size], [0, 0]])
+
+    def crop(x):
+        return tf.image.crop_to_bounding_box(image, x[0] - pad_size, x[1] - pad_size, patch_size, patch_size)
+
+    image = tf.concat(tf.unstack(tf.map_fn(crop, lms, dtype=dtype)), axis=-1)
+
+    return image
+
+
 def tf_records_iterator(path, feature=None):
 
     record_iterator = tf.python_io.tf_record_iterator(path=path)
