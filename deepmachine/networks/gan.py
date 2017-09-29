@@ -124,13 +124,13 @@ def CycleGANHG(inputs, is_training=True, n_channels=3, **kwargs):
             input_B = inputs[..., n_channels:]
 
             # generators
-            states['fake_B'] = fake_B = gan.generator(
+            states['fake_B'] = fake_B = gan.create_generator(
                 input_A, n_channels, reuse=False, name="generatorAB")
-            states['fake_A'] = fake_A = gan.generator(
+            states['fake_A'] = fake_A = gan.create_generator(
                 input_B, n_channels, reuse=False, name="generatorBA")
-            states['rec_A'] = gan.generator(
+            states['rec_A'] = gan.create_generator(
                 fake_B, n_channels, reuse=True, name="generatorBA")
-            states['rec_B'] = gan.generator(
+            states['rec_B'] = gan.create_generator(
                 fake_A, n_channels, reuse=True, name="generatorAB")
 
             # discriminators

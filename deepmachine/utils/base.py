@@ -2,7 +2,8 @@ import tensorflow as tf
 import numpy as np
 import menpo.io as mio
 import menpo
-import scipy
+from scipy.interpolate import interp1d
+import scipy as sp
 
 from pathlib import Path
 from scipy.io import loadmat
@@ -174,3 +175,66 @@ def ced_accuracy(t, dists):
     part_pckh = (tf.to_int32(pts_r <= t) + tf.to_int32(pts_l <= t)) / 2
 
     return tf.concat([part_pckh, tf.reduce_sum(tf.to_int32(dists <= t), 1)[..., None] / tf.shape(dists)[1]], 1)
+
+def arclen_polyl(cnt):
+
+    tang = np.diff(cnt, axis=0)
+    seg_len = np.sqrt(np.power(tang[:, 0], 2) + np.power(tang[:, 1], 2))
+    seg_len = np.hstack((0, seg_len))
+    alparam = np.cumsum(seg_len)
+    cntLen = alparam[-1]
+    return alparam, cntLen
+
+def interpolate(points, step, kind='slinear'):
+    alparam, cntLen = arclen_polyl(points)
+
+    f_x = interp1d(
+        alparam, points[:, 0], kind=kind
+    )
+
+    f_y = interp1d(
+        alparam, points[:, 1], kind=kind
+    )
+
+    points_dense_x = f_x(np.arange(0, cntLen, step))
+    points_dense_y = f_y(np.arange(0, cntLen, step))
+
+    points_dense = np.hstack((
+        points_dense_x[:, None], points_dense_y[:, None]
+    ))
+
+    return points_dense
+
+def multi_channel_svs(svs_pts, h,w, groups,c=3):
+    msvs = Image.init_blank((h,w), n_channels=len(groups))
+    for ch,g in enumerate(groups):
+        if len(g):
+            msvs.pixels[ch, ... ] = svs_shape(svs_pts, h,w, groups=[g],c=c).pixels[0]
+    msvs.pixels /= np.max(msvs.pixels)
+    return msvs
+
+def svs_shape(pc, xr, yr, groups=None, c=1):
+    store_image = Image.init_blank((xr,yr))
+    ni = binary_shape(pc, xr, yr, groups)
+    store_image.pixels[0,:,:] = sp.ndimage.filters.gaussian_filter(np.squeeze(ni.pixels), c)
+    return store_image
+
+def binary_shape(pc, xr, yr, groups=None):
+    return sample_points(pc.points, xr, yr, groups)
+
+def sample_points(target, range_x, range_y, edge=None, x=0, y=0):
+    ret_img = Image.init_blank((range_x, range_y))
+
+    if edge is None:
+        for pts in target:
+            ret_img.pixels[0, pts[0]-y, pts[1]-x] = 1
+    else:
+        for eg in edge:
+            for pts in interpolate(target[eg], 0.1):
+                try:
+                    ret_img.pixels[0, pts[0]-y, pts[1]-x] = 1
+                except:
+                    pass
+                    # print('Index out of Bound')
+
+    return ret_img

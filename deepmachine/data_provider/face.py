@@ -5,6 +5,8 @@ from pathlib import Path
 
 from ..flags import FLAGS
 from .base import *
+from .features import *
+from .resolvers import *
 
 
 def generate_occlusion(image, uv):
@@ -260,57 +262,17 @@ def DenseFaceProvider(path, batch_size=1, **kwargs):
         is_training=True)
 
 
-FeatureIUV = {
-    # images
-    'image': tf.FixedLenFeature([], tf.string),
-    'height': tf.FixedLenFeature([], tf.int64),
-    'width': tf.FixedLenFeature([], tf.int64),
-    # iuv
-    'iuv': tf.FixedLenFeature([], tf.string),
-    'iuv_height': tf.FixedLenFeature([], tf.int64),
-    'iuv_width': tf.FixedLenFeature([], tf.int64),
-    # landmarks
-    'n_landmarks': tf.FixedLenFeature([], tf.int64),
-    'gt': tf.FixedLenFeature([], tf.string),
-    'visible': tf.FixedLenFeature([], tf.string),
-    'marked': tf.FixedLenFeature([], tf.string),
-}
-
-FeatureHeatmap = {
-    # images
-    'image': tf.FixedLenFeature([], tf.string),
-    'height': tf.FixedLenFeature([], tf.int64),
-    'width': tf.FixedLenFeature([], tf.int64),
-
-    # landmarks
-    'n_landmarks': tf.FixedLenFeature([], tf.int64),
-    'gt': tf.FixedLenFeature([], tf.string),
-    'visible': tf.FixedLenFeature([], tf.string),
-    'marked': tf.FixedLenFeature([], tf.string),
-}
-
-ResolverHM = {
-    'inputs': image_resolver,
-    'heatmap': heatmap_resolver_face,
-}
-
-ResolverIUV = {
-    'inputs': image_resolver,
-    'heatmap': heatmap_resolver_face,
-    'uv': iuv_resolver_face
-}
-
 
 DenseFaceCascadeProvider = functools.partial(
     TFRecordNoFlipProvider,
     features=FeatureIUV,
     augmentation=True,
-    resolvers=ResolverIUV
+    resolvers=ResolverIUVFace
 )
 
 HeatmapFaceProvider = functools.partial(
     TFRecordNoFlipProvider,
     features=FeatureHeatmap,
     augmentation=True,
-    resolvers=ResolverHM
+    resolvers=ResolverHMFace
 )

@@ -67,13 +67,9 @@ def hex_to_rgb(hex_str):
 
 
 def svs_rgb(pixels,
-            pts=None,
-            fid=None,
-            crop=False,
-            render_pts=True,
-            alpha=1):
-    colours = colours = sample_colours_from_colourmap(
-        n_channel, colour_set
+            colour_set='jet'):
+    colours = sample_colours_from_colourmap(
+        pixels.shape[-1], colour_set
     )
 
     return pixels.dot(colours) / 255.

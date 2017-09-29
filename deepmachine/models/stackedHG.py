@@ -13,6 +13,10 @@ def deconv_layer(net, up_scale, n_channel, method='transpose'):
     if method == 'transpose':
         net = slim.conv2d_transpose(net, n_channel, (up_scale, up_scale), (
             up_scale, up_scale), activation_fn=None, padding='VALID')
+    elif method == 'transpose+bn':
+        net = slim.conv2d_transpose(net, n_channel, (up_scale, up_scale), (
+            up_scale, up_scale), activation_fn=None, normalizer_fn=slim.batch_norm, padding='VALID')
+
     elif method == 'transpose+conv':
         net = slim.conv2d_transpose(net, n_channel, (up_scale, up_scale), (
             up_scale, up_scale), activation_fn=None, padding='VALID')
@@ -286,6 +290,8 @@ def hourglass(inputs,
     ) if classification_channels else None
 
     return regression, logits
+
+
 
 
 def StackedHourglassTorch(inputs, out_channels=16, deconv='bilinear'):

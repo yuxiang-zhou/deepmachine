@@ -15,15 +15,21 @@ def get_jpg_string(im):
 
 
 def _int_feauture(value):
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+    if type(value) is not list:
+        value = [value]
+    return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
 
 
 def _bytes_feauture(value):
-    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+    if type(value) is not list:
+        value = [value]
+    return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
 
 
 def _float_feauture(value):
-    return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
+    if type(value) is not list:
+        value = [value]
+    return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
 def image_builder(data):
@@ -33,6 +39,17 @@ def image_builder(data):
         'image': _bytes_feauture(get_jpg_string(image)),
         'height': _int_feauture(image.shape[0]),
         'width': _int_feauture(image.shape[1])
+    }
+
+def relative_landmark_builder(data):
+    visible_pts = data['visible_pts']
+    marked_index = data['marked_index']
+    landmarks = data['rlms']
+    return {
+        'n_landmarks': _int_feauture(landmarks.shape[0]),
+        'rlms': _bytes_feauture(landmarks.astype(np.float32).tobytes()),
+        'visible': _bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
+        'marked': _bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
     }
 
 

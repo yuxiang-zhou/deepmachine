@@ -16,77 +16,10 @@ import sys
 from ..flags import FLAGS
 from ..utils import tf_lms_to_heatmap, tf_rotate_points
 from .base import *
+from .resolvers import *
+from .features import *
 
 slim = tf.contrib.slim
-
-
-FeatureIUVHM = {
-    # images
-    'image': tf.FixedLenFeature([], tf.string),
-    'height': tf.FixedLenFeature([], tf.int64),
-    'width': tf.FixedLenFeature([], tf.int64),
-    # iuv
-    'iuv': tf.FixedLenFeature([], tf.string),
-    'iuv_height': tf.FixedLenFeature([], tf.int64),
-    'iuv_width': tf.FixedLenFeature([], tf.int64),
-    # svs
-    'n_svs': tf.FixedLenFeature([], tf.int64),
-    'n_svs_ch': tf.FixedLenFeature([], tf.int64),
-    'svs': tf.FixedLenFeature([], tf.string),
-    # landmarks
-    'n_landmarks': tf.FixedLenFeature([], tf.int64),
-    'gt': tf.FixedLenFeature([], tf.string),
-    'visible': tf.FixedLenFeature([], tf.string),
-    'marked': tf.FixedLenFeature([], tf.string),
-    'scale': tf.FixedLenFeature([], tf.float32),
-    # original infomations
-    'original_scale': tf.FixedLenFeature([], tf.float32),
-    'original_centre': tf.FixedLenFeature([], tf.string),
-    'original_lms': tf.FixedLenFeature([], tf.string),
-    # inverse transform to original landmarks
-    'restore_translation': tf.FixedLenFeature([], tf.string),
-    'restore_scale': tf.FixedLenFeature([], tf.float32)
-}
-
-FeatureIUV = {
-    # images
-    'image': tf.FixedLenFeature([], tf.string),
-    'height': tf.FixedLenFeature([], tf.int64),
-    'width': tf.FixedLenFeature([], tf.int64),
-    # iuv
-    'iuv': tf.FixedLenFeature([], tf.string),
-    'iuv_height': tf.FixedLenFeature([], tf.int64),
-    'iuv_width': tf.FixedLenFeature([], tf.int64),
-}
-
-FeatureHeatmap = {
-    # images
-    'image': tf.FixedLenFeature([], tf.string),
-    'height': tf.FixedLenFeature([], tf.int64),
-    'width': tf.FixedLenFeature([], tf.int64),
-
-    # landmarks
-    'n_landmarks': tf.FixedLenFeature([], tf.int64),
-    'gt': tf.FixedLenFeature([], tf.string),
-    'visible': tf.FixedLenFeature([], tf.string),
-    'marked': tf.FixedLenFeature([], tf.string),
-}
-
-ResolverHM = {
-    'inputs': image_resolver,
-    'heatmap': heatmap_resolver_pose,
-}
-
-ResolverIUVHM = {
-    'inputs': image_resolver,
-    'heatmap': heatmap_resolver_pose,
-    'iuv': iuv_resolver
-}
-
-ResolverIUV = {
-    'inputs': image_resolver,
-    'iuv': functools.partial(iuv_resolver, from_image=False, dtype=tf.uint8)
-}
 
 
 DenseRegPoseProvider = functools.partial(
@@ -107,5 +40,12 @@ HeatmapProvider = functools.partial(
     TFRecordProvider,
     features=FeatureHeatmap,
     augmentation=True,
-    resolvers=ResolverHM
+    resolvers=ResolverHMPose
+)
+
+BBoxHeatmapProvider = functools.partial(
+    TFRecordBBoxProvider,
+    features=FeatureRLMS,
+    augmentation=True,
+    resolvers=ResolverBBoxPose
 )

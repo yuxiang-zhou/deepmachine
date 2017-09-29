@@ -13,7 +13,7 @@ from . import summary
 
 
 def _undefined_op(*args, **kwargs):
-    raise NotImpementedError
+    raise NotImplementedError
 
 
 class DeepMachine(object):
@@ -53,6 +53,7 @@ class DeepMachine(object):
         self.init_op = ops.init.restore
         self.eval_op = _undefined_op
         self.restore_path = restore_path
+        self.pre_process_fn = tf.identity
 
     @property
     def network_op(self):
@@ -105,6 +106,15 @@ class DeepMachine(object):
     @eval_op.setter
     def eval_op(self, value):
         self.__eval_op = value
+        self._reset_graph()
+        
+    @property
+    def pre_process_fn(self):
+        return self.__pre_process_fn
+
+    @pre_process_fn.setter
+    def pre_process_fn(self, value):
+        self.__pre_process_fn = value
         self._reset_graph()
 
     def add_loss_op(self, op):
@@ -231,7 +241,7 @@ class DeepMachine(object):
     def run_batch(self, data, dtype=tf.float32, **kwargs):
         return self._run(data, dtype=dtype, **kwargs)
 
-    def _run(self, data, dtype, **kwargs):
+    def _run(self, data, dtype, feed_dict={}):
         # build graph if needed
         if self._run_graph is None:
             with tf.Graph().as_default() as g:
@@ -242,6 +252,8 @@ class DeepMachine(object):
                     shape=(None, None, None, data.shape[-1]),
                     name='inputs'
                 )
+                
+                tfinputs = self.pre_process_fn(tfinputs, **kwargs)
 
                 # Define model graph.
                 self._run_net_eps = self.network_op(
@@ -261,8 +273,10 @@ class DeepMachine(object):
 
         if need_restart and self._run_saver:
             self._run_saver.restore(sess, self.restore_path)
+            
+        feed_dict['inputs:0'] = data
 
-        return sess.run(self._run_net_eps, feed_dict={'inputs:0': data})
+        return sess.run(self._run_net_eps, feed_dict=feed_dict)
 
     def _get_session(self, graph, return_restart=False):
         restart = False

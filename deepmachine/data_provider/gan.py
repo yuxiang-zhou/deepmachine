@@ -16,43 +16,10 @@ import sys
 from ..flags import FLAGS
 from ..utils import tf_lms_to_heatmap, tf_rotate_points
 from .base import *
+from .resolvers import *
 
 slim = tf.contrib.slim
 
-
-def dummy_resolver(_, *args, **kwargs):
-    dummy = tf.constant(np.random.sample([1]).astype(np.float32))
-    dummy.set_shape([1])
-
-    return dummy
-
-
-def cyclegan_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1])):
-    image = tf.image.decode_jpeg(content)
-    image_height = tf.shape(image)[0]
-    image_width = tf.shape(image)[1]
-    image_channels = tf.shape(image)[2]
-
-    image = tf.cond(image_channels > 1,
-                    lambda: image,
-                    lambda: tf.image.grayscale_to_rgb(image))
-    image = tf.to_float(image) / 255. * 2. - 1.
-
-    # augmentation
-    image = tf.image.random_flip_left_right(image)
-    image = tf.image.resize_images(image, [286, 286])
-    image = tf.random_crop(image, [256, 256, 3])
-
-    # shape defination
-    image.set_shape([None, None, 3])
-
-    return image
-
-
-ResolverImage = {
-    'inputs': cyclegan_image_file_resolver,
-    'dummy': dummy_resolver
-}
 
 
 def CycleGanProvider(path, *args, **kwargs):
