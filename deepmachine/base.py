@@ -235,11 +235,11 @@ class DeepMachine(object):
                     summary_op=tf.summary.merge(summary_ops),
                     eval_interval_secs=30)
 
-    def run_one(self, data, dtype=tf.float32, **kwargs):
-        return self._run(data, dtype=dtype, **kwargs)
+    def run_one(self, data, dtype=tf.float32, feed_dict=feed_dict):
+        return self._run(data, dtype=dtype, feed_dict=feed_dict)
 
-    def run_batch(self, data, dtype=tf.float32, **kwargs):
-        return self._run(data, dtype=dtype, **kwargs)
+    def run_batch(self, data, dtype=tf.float32, feed_dict=feed_dict):
+        return self._run(data, dtype=dtype, feed_dict=feed_dict)
 
     def _run(self, data, dtype, feed_dict={}):
         # build graph if needed
@@ -253,7 +253,7 @@ class DeepMachine(object):
                     name='inputs'
                 )
                 
-                tfinputs = self.pre_process_fn(tfinputs, **kwargs)
+                tfinputs = self.pre_process_fn(tfinputs)
 
                 # Define model graph.
                 self._run_net_eps = self.network_op(
