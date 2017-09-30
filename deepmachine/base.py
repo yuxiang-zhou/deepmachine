@@ -235,13 +235,13 @@ class DeepMachine(object):
                     summary_op=tf.summary.merge(summary_ops),
                     eval_interval_secs=30)
 
-    def run_one(self, data, dtype=tf.float32, feed_dict=feed_dict):
+    def run_one(self, data, dtype=tf.float32, feed_dict={}):
         return self._run(data, dtype=dtype, feed_dict=feed_dict)
 
-    def run_batch(self, data, dtype=tf.float32, feed_dict=feed_dict):
+    def run_batch(self, data, dtype=tf.float32, feed_dict={}):
         return self._run(data, dtype=dtype, feed_dict=feed_dict)
 
-    def _run(self, data, dtype, feed_dict={}):
+    def _run(self, data, dtype, feed_dict={}, **kwargs):
         # build graph if needed
         if self._run_graph is None:
             with tf.Graph().as_default() as g:

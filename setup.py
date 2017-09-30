@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(name='deepmachine',
-      version='0.1.4',
+      version='0.1.5',
       description='Deep Learning Framework',
       packages=find_packages(),
       author='Yuxiang ZHOU',
