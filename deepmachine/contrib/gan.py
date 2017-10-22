@@ -20,6 +20,50 @@ from ..flags import FLAGS
 
 
 # general
+def get_pix2pix():
+    # create machine
+    model = deepmachine.DeepMachine(
+        network_op=functools.partial(
+            networks.gan.Pix2Pix,
+            n_channels=3
+        )
+    )
+
+    # add losses
+    model.add_loss_op(losses.loss_generator)
+    model.add_loss_op(losses.loss_discriminator)
+    
+    # add summaries
+    model.add_summary_op(summary.summary_output_image_batch)
+
+    # set ops
+    model.train_op = ops.train.gan
+
+    return model
+
+
+def get_lstm_pix2pix():
+    # create machine
+    model = deepmachine.DeepMachine(
+        network_op=functools.partial(
+            networks.gan.LSTMPix2Pix,
+            n_channels=3
+        )
+    )
+
+    # add losses
+    model.add_loss_op(functools.partial(losses.loss_lstm_generator, l1_weight=100.))
+    model.add_loss_op(losses.loss_lstm_discriminator)
+    
+    # add summaries
+    model.add_summary_op(summary.summary_input_LSTM)
+    model.add_summary_op(summary.summary_output_image_batch)
+
+    # set ops
+    model.train_op = ops.train.gan
+
+    return model
+
 
 def get_cyclegan():
     # create machine
@@ -35,7 +79,7 @@ def get_cyclegan():
     model.add_loss_op(losses.loss_cyclegan_generator)
 
     # add summaries
-    model.add_summary_op(summary.summary_cyclegan)
+    model.add_summary_op(summary.summary_output_image_batch)
 
     # set ops
     model.train_op = ops.train.cyclegan
@@ -57,7 +101,7 @@ def get_cyclegan_hg():
     model.add_loss_op(losses.loss_cyclegan_generator)
 
     # add summaries
-    model.add_summary_op(summary.summary_cyclegan)
+    model.add_summary_op(summary.summary_output_image_batch)
 
     # set ops
     model.train_op = ops.train.cyclegan

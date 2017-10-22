@@ -20,6 +20,27 @@ from .base import *
 slim = tf.contrib.slim
 
 
+FeatureSequence = {
+    # sequences
+    'frames': tf.VarLenFeature(tf.string),
+    'drawings': tf.VarLenFeature(tf.string),
+
+    # meta data
+    'height': tf.FixedLenFeature([], tf.int64),
+    'width': tf.FixedLenFeature([], tf.int64),
+}
+
+FeatureMaskedSequence = {
+    # sequences
+    'frames': tf.VarLenFeature(tf.string),
+    'drawings': tf.VarLenFeature(tf.string),
+    'masks': tf.FixedLenFeature([], tf.string),
+
+    # meta data
+    'height': tf.FixedLenFeature([], tf.int64),
+    'width': tf.FixedLenFeature([], tf.int64),
+}
+
 FeatureIUVHM = {
     # images
     'image': tf.FixedLenFeature([], tf.string),

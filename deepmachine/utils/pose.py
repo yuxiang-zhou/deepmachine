@@ -386,10 +386,13 @@ def fit_one(sess, lms_heatmap_prediction, states, img, centre, scale, rotate):
 
     input_pixels = ccimg.pixels_with_channels_at_back()
 
-    lms_hm_prediction, *pred_states = sess.run(
+    results = sess.run(
         [lms_heatmap_prediction] + states,
         feed_dict={'inputs:0': input_pixels[None, ...]})
 
+    lms_hm_prediction = results[0]
+    pred_states = results[1:]
+    
     bsize, h, w, n_ch = lms_hm_prediction.shape
     lms_hm_prediction_filter = np.stack(list(map(
         lambda x: scipy.ndimage.filters.gaussian_filter(*x),

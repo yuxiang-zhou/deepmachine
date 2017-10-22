@@ -276,3 +276,97 @@ HeatmapFaceProvider = functools.partial(
     augmentation=True,
     resolvers=ResolverHMFace
 )
+
+
+class TFUVCompletionProvider(Provider):
+    def __init__(self,
+                 dirpath,
+                 batch_size=1,
+                 augmentation=False,
+                 no_processes=4,
+                 resolvers={}):
+
+        self._dirpath = dirpath
+        self._batch_size = batch_size
+        self._augmentation = augmentation
+        self._key_resolver = resolvers
+        self._count = None
+        self.no_processes = no_processes
+
+    def size(self):
+        if self._count is None:
+            self._count = 0
+            for path in self._dirpath.split(','):
+                self._count += len(list(Path(self._dirpath).glob('*.png')))
+
+        return self._count
+
+    def get(self, *keys):
+
+        uv_filelist = []
+        mask_filelist = []
+        db_path = Path(self._dirpath)
+        for gt_uv_path in print_progress(list(db_path.glob('*.jpg'))):
+            for mask_id in range(41):
+                mask_path = gt_uv_path.parent / ('%s_%03d.png'%(gt_uv_path.stem, mask_id))
+                uv_filelist.append(str(gt_uv_path))
+                mask_filelist.append(str(mask_path))
+
+        tf_uv_filelist = tf.convert_to_tensor(uv_filelist)
+        tf_mask_filelist = tf.convert_to_tensor(mask_filelist)
+        self._count = n_items = len(uv_filelist)
+        print('Number of items: %d' % n_items)
+
+        producer = tf.train.range_input_producer(
+            n_items, capacity=n_items)
+
+        queue = None
+        enqueue_ops = []
+        for _ in range(self.no_processes):
+            tf_filepath_id = producer.dequeue()
+            tf_uv_path = tf_uv_filelist[tf_filepath_id]
+            tf_mask_path = tf_mask_filelist[tf_filepath_id]
+            tf_file_contents = {
+                'image': tf.read_file(tf_uv_path),
+                'mask': tf.read_file(tf_mask_path)
+            }
+
+            augmentation_args = self._random_augmentation()
+
+            tensors = []
+            for key in keys:
+                fn = functools.partial(
+                    self._key_resolver[key],
+                    aug=self._augmentation,
+                    aug_args=augmentation_args
+                )
+                tensors.append(fn(tf_file_contents))
+
+            shapes = [x.get_shape() for x in tensors]
+
+            if queue is None:
+                dtypes = [x.dtype for x in tensors]
+                queue = tf.FIFOQueue(
+                    capacity=200,
+                    dtypes=dtypes, name='fifoqueue')
+
+            enqueue_ops.append(queue.enqueue(tensors))
+
+        qr = tf.train.QueueRunner(queue, enqueue_ops)
+        tf.train.add_queue_runner(qr)
+
+        tensors_dequeue = queue.dequeue()
+
+        for t, s in zip(tensors_dequeue, shapes):
+            t.set_shape(s)
+
+        inputs_batch = tf.train.batch(
+            tensors_dequeue, batch_size=self._batch_size, enqueue_many=False,
+            capacity=4 * self.no_processes * self._batch_size,
+            allow_smaller_final_batch=True, dynamic_pad=True,)
+
+        retval = {}
+        for k, b in zip(keys, inputs_batch):
+            retval[k] = b
+
+        return retval

@@ -109,7 +109,7 @@ class TFSeqRecordProvider(TFRecordProvider):
         for name in names:
             tensors.append(name)
 
-        inputs_batch = tf.train.batch(
+        inputs_batch = tf.train.shuffle_batch(
             tensors, self._batch_size, 100, 20, 4, enqueue_many=True)
 
         retval = {}
@@ -140,13 +140,11 @@ class TFDirectoryProvider(Provider):
                  dirpath,
                  batch_size=1,
                  augmentation=False,
-                 image_size=256,
                  ext='.jpg',
                  no_processes=4,
                  resolvers={}):
 
         self._dirpath = dirpath
-        self._image_size = image_size
         self._batch_size = batch_size
         self._augmentation = augmentation
         self._ext = ext

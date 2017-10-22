@@ -390,18 +390,22 @@ def densereg_face_iterator(istraining, db='helen'):
 
         pimg.landmarks['JOINT'] = orig_image.landmarks['PTS']
 
-        pimg, *_ = utils.crop_image_bounding_box(
+        pimg_data = utils.crop_image_bounding_box(
             pimg,
             pimg.landmarks['JOINT'].bounding_box(),
             [384, 384],
             base=256)
+        
+        pimg = pimg_data[0]
 
-        iuv, *_ = utils.crop_image_bounding_box(
+        iuv_data = utils.crop_image_bounding_box(
             iuv,
             pimg.landmarks['JOINT'].bounding_box(),
             [384, 384],
             base=256)
 
+        iuv = iuv_data[0]
+        
         yield {
             'image': pimg,
             'iuv': iuv,
@@ -433,18 +437,22 @@ def densereg_pose_iterator():
 
         # load lms data
 
-        pimg, *_ = utils.crop_image_bounding_box(
+        pimg_data = utils.crop_image_bounding_box(
             pimg,
             bbox,
             [384, 384],
             base=256)
+        
+        pimg = pimg_data[0]
 
-        iuv, *_ = utils.crop_image_bounding_box(
+        iuv_data = utils.crop_image_bounding_box(
             iuv,
             bbox,
             [384, 384],
             base=256,
             order=0)
+        
+        iuv = iuv_data[0]
         
         yield {
             'image': pimg,

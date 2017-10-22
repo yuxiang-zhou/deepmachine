@@ -19,6 +19,24 @@ from .base import *
 
 slim = tf.contrib.slim
 
+
+def dummy_resolver(_, *args, **kwargs):
+    dummy = tf.constant(np.random.sample([1]).astype(np.float32))
+    dummy.set_shape([1])
+
+    return dummy
+
+def dummy_seq_resolver(features, *args, **kwargs):
+    frames = features['frames'].values
+    n_data = tf.shape(frames)[0]
+    window_size = 3
+    
+    dummy = tf.constant(np.random.sample([1]).astype(np.float32))
+    dummy_sequences = tf.map_fn(lambda x:dummy, tf.range(n_data - window_size + 1), dtype=tf.float32)
+    
+
+    return dummy_sequences
+
 def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
     # load features
     image = tf.image.decode_jpeg(features['image'], channels=3)
@@ -615,15 +633,11 @@ def heatmap_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
 
     return gt_heatmap
 
-def dummy_resolver(_, *args, **kwargs):
-    dummy = tf.constant(np.random.sample([1]).astype(np.float32))
-    dummy.set_shape([1])
-
-    return dummy
 
 
 def cyclegan_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1])):
     image = tf.image.decode_jpeg(content)
+    
     image_height = tf.shape(image)[0]
     image_width = tf.shape(image)[1]
     image_channels = tf.shape(image)[2]
@@ -642,6 +656,144 @@ def cyclegan_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0,
     image.set_shape([None, None, 3])
 
     return image
+
+
+def paired_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1])):
+    
+    image = tf.image.decode_jpeg(content)
+    
+    image_height = tf.shape(image)[0]
+    image_width = tf.shape(image)[1]
+    image_channels = tf.shape(image)[2]
+
+    image = tf.cond(image_channels > 1,
+                    lambda: image,
+                    lambda: tf.image.grayscale_to_rgb(image))
+    
+    image_channels = 3
+    
+    image = tf.reshape(
+        tf.transpose(
+            tf.reshape(
+                image, [image_height, 2, image_width // 2, image_channels]
+            ), [0,2,1,3]
+        ), [image_height,image_width // 2,image_channels * 2])
+
+    
+    image = tf.to_float(image) / 255. * 2. - 1.
+
+    # augmentation
+    image = tf.image.random_flip_left_right(image)
+    image = tf.image.resize_images(image, [286, 286])
+    image = tf.random_crop(image, [256, 256, image_channels * 2])
+
+    # shape defination
+    image.set_shape([256, 256, 6])
+
+    return image
+
+
+def paired_seq_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
+    frames = features['frames'].values
+    drawings = features['drawings'].values
+    n_data = tf.shape(frames)[0]
+    sliding_window = 3
+    
+    # formating
+    frames = tf.to_float(tf.map_fn(tf.image.decode_jpeg, frames, dtype=tf.uint8)) / 255.
+    drawings = 1 - tf.to_float(tf.map_fn(tf.image.decode_jpeg, drawings, dtype=tf.uint8)) / 255.
+    paired_squence = tf.concat([frames, drawings], -1)
+    image_height = tf.shape(frames)[1]
+    image_width = tf.shape(frames)[2]
+    
+    # centre crop 256
+    target_h = tf.to_int32(256)
+    target_w = tf.to_int32(256)
+    offset_h = tf.to_int32((image_height - target_h) / 2)
+    offset_w = tf.to_int32((image_width - target_w) / 2)
+
+    paired_squence = tf.image.crop_to_bounding_box(
+        paired_squence, offset_h, offset_w, target_h, target_w)
+    
+    # build sliding window
+
+    range_indexes = tf.range(0, n_data - sliding_window + 1)
+    sequences = tf.map_fn(lambda x:paired_squence[x:x+sliding_window], range_indexes, dtype=tf.float32)
+    sequences = sequences * 2 - 1
+    
+    sequences.set_shape([None, sliding_window, None, None, 6])
+    
+    return sequences
+
+
+def paired_masked_seq_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
+    frames = features['frames'].values
+    drawings = features['drawings'].values
+    masks = features['masks']
+    n_data = tf.shape(frames)[0]
+    sliding_window = 3
+    
+    # formating
+    frames = tf.to_float(tf.map_fn(tf.image.decode_jpeg, frames, dtype=tf.uint8)) / 255.
+    drawings = 1 - tf.to_float(tf.map_fn(tf.image.decode_jpeg, drawings, dtype=tf.uint8)) / 255.
+    masks = tf.reshape(tf.to_float(tf.decode_raw(masks, tf.uint8)), [n_data, 384, 384, 3])
+    masks = (masks + 1.) / 2.
+    
+    image_height = tf.shape(frames)[1]
+    image_width = tf.shape(frames)[2]
+    
+    # merge by channels
+    paired_squence = tf.concat([frames, drawings, masks], -1)
+    
+    # centre crop 256
+    target_h = tf.to_int32(256)
+    target_w = tf.to_int32(256)
+    offset_h = tf.to_int32((image_height - target_h) / 2)
+    offset_w = tf.to_int32((image_width - target_w) / 2)
+
+    paired_squence = tf.image.crop_to_bounding_box(
+        paired_squence, offset_h, offset_w, target_h, target_w)
+    
+    # build sliding window
+
+    range_indexes = tf.range(0, n_data - sliding_window + 1)
+    sequences = tf.map_fn(lambda x:paired_squence[x:x+sliding_window], range_indexes, dtype=tf.float32)
+    sequences = sequences * 2 - 1
+    
+    sequences.set_shape([None, sliding_window, None, None, 9])
+    
+    return sequences
+
+
+def decode_jpeg(feature, *args, **kargs):
+    return tf.image.decode_jpeg(feature['image'])
+
+
+def decode_mask(feature, *args, **kargs):
+    return tf.image.decode_png(feature['mask'])
+
+
+ResolveMaskedImage={
+    'inputs': decode_jpeg,
+    'masks': decode_mask
+})
+
+ResolveMaskedPairedSeq = {
+    'inputs': paired_masked_seq_resolver,
+    'dummy': dummy_seq_resolver
+}
+
+
+ResolvePairedSeq = {
+    'inputs': paired_seq_resolver,
+    'dummy': dummy_seq_resolver
+}
+
+
+ResolverPairedImage = {
+    'inputs': paired_image_file_resolver,
+    'dummy': dummy_resolver
+}
 
 
 ResolverImage = {

@@ -227,12 +227,12 @@ def sample_points(target, range_x, range_y, edge=None, x=0, y=0):
 
     if edge is None:
         for pts in target:
-            ret_img.pixels[0, pts[0]-y, pts[1]-x] = 1
+            ret_img.pixels[0, pts[0]-y, pts[1]-x] = 1.
     else:
         for eg in edge:
             for pts in interpolate(target[eg], 0.1):
                 try:
-                    ret_img.pixels[0, pts[0]-y, pts[1]-x] = 1
+                    ret_img.pixels[0, int(pts[0]-y), int(pts[1]-x)] = 1.
                 except:
                     pass
                     # print('Index out of Bound')

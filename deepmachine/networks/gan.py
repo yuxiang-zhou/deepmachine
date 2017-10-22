@@ -21,7 +21,7 @@ def GAN(
     with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
         states = {}
 
-        states['generator'] = gan.generator_resnet(
+        prediction = states['generator'] = gan.generator_resnet(
             inputs, n_channels, reuse=False, name="generator")
 
         states['discriminator_pred'] = gan.discriminator(
@@ -35,13 +35,58 @@ def GAN(
 
         return prediction, states
 
+def Pix2Pix(input_pairs, is_training=True, n_channels=3, **kwargs):
+    with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
+        states = {}
+
+        # inputs
+        inputs = input_pairs[..., :n_channels]
+        targets = input_pairs[..., n_channels:]
+
+        # generators
+        prediction = gan.create_generator(
+            inputs, n_channels, reuse=False, name="generator")
+
+        # discriminators
+        states['discriminator_gt'] = gan.create_discriminator(
+            inputs, targets, reuse=False, name='discriminator')
+        states['discriminator_pred'] = gan.create_discriminator(
+            inputs, prediction, reuse=True, name='discriminator')
+
+        return prediction, states
+    
+    
+def LSTMPix2Pix(input_seqs, is_training=True, n_channels=3, **kwargs):
+    with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
+        states = {}
+
+        # inputs
+        targets = input_seqs[:, 0, :, :, :n_channels]
+        inputs = input_seqs[:, 0, :, :, n_channels:n_channels*2]
+        masks = input_seqs[:, 0, :, :, n_channels*2:n_channels*3]
+
+        targets *= masks
+        
+        # generators
+        prediction = gan.create_generator(
+            inputs, n_channels, reuse=False, name="generator")
+
+        # discriminators
+        states['discriminator_gt'] = gan.create_discriminator(
+            inputs, targets, reuse=False, name='discriminator')
+        states['discriminator_pred'] = gan.create_discriminator(
+            inputs, prediction, reuse=True, name='discriminator')
+
+        return prediction, states
+
+    
 
 def PoseGAN(
     inputs,
     is_training=True,
     n_channels=16,
-    deconv='bilinear',
-    bottleneck='bottleneck',
+    deconv='transpose+bn',
+    bottleneck='bottleneck_inception',
     **kwargs
 ):
 
@@ -70,6 +115,9 @@ def PoseGAN(
             tf.range(batch_size),
             dtype=tf.float32
         )
+        
+        states['pred_patch'] = pred_patch
+        states['gt_patch'] = gt_patch
 
         states['discriminator_pred'] = gan.discriminator(
             pred_patch, name="discriminator")

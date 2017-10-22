@@ -165,20 +165,20 @@ def get_gan_pose():
         network_op=functools.partial(
             networks.gan.PoseGAN,
             n_channels=16,
-            deconv='transpose+conv',
+            deconv='transpose+bn',
             bottleneck='bottleneck_inception',
         )
     )
 
     # add losses
     model.add_loss_op(functools.partial(
-        losses.loss_landmark_regression, collection='generator_loss'
+        losses.loss_landmark_regression, collection='generator_loss', alpha=5
     ))
     model.add_loss_op(functools.partial(
-        losses.loss_generator, alpha=10.0
+        losses.loss_posegan_generator, alpha=1
     ))
     model.add_loss_op(functools.partial(
-        losses.loss_discriminator, alpha=10.0
+        losses.loss_posegan_discriminator, alpha=1
     ))
 
     # add summaries

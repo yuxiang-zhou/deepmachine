@@ -20,6 +20,21 @@ def summary_input(data_eps, network_eps, is_training=True):
                 inputs, [batch_size, height, width, -1, 3]), [0, 3, 1, 2, 4])
         ),
         max_outputs=3)
+    
+    
+def summary_input_LSTM(data_eps, network_eps, is_training=True, n_channels=3):
+    input_seqs = data_eps['inputs']
+    
+    # inputs
+    targets = data_eps['inputs'][:, 0, :, :, :n_channels]
+    inputs = data_eps['inputs'][:, 0, :, :, n_channels:n_channels*2]
+    masks = data_eps['inputs'][:, 0, :, :, n_channels*2:n_channels*3]
+    targets *= masks
+    
+    tf.summary.image(
+        'images/input_pair',
+        tf.concat([inputs, targets], -2),
+        max_outputs=3)
 
 
 def summary_total_loss(data_eps, network_eps, is_training=True):
@@ -83,15 +98,20 @@ def summary_landmarks(data_eps, network_eps, is_training=True, n_channel=16):
 
 def summary_predictions(data_eps, network_eps, is_training=True):
     predictions, _ = network_eps
+    batch_size = tf.shape(predictions)[0]
+    height = tf.shape(predictions)[1]
+    width = tf.shape(predictions)[2]
+    
     tf.summary.image(
         'predictions/batch',
         tf.map_fn(
-            utils.tf_image_batch_to_grid,
-            tf.transpose(predictions, [0, 3, 1, 2])[..., None]
+            functools.partial(utils.tf_image_batch_to_grid, col_size=1),
+            tf.transpose(tf.reshape(
+                predictions, [batch_size, height, width, -1, 1]), [0, 3, 1, 2, 4])
         ),
         max_outputs=3)
 
-def summary_cyclegan(data_eps, network_eps, is_training=True):
+def summary_output_image_batch(data_eps, network_eps, is_training=True):
     inputs, _ = network_eps
 
     batch_size = tf.shape(inputs)[0]

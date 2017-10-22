@@ -50,7 +50,7 @@ def gan(
         loss_collection='generator_loss'))
     disc_loss = tf.reduce_sum(tf.losses.get_losses(
         loss_collection='discriminator_loss'))
-
+    
     # learning rate decay
     global_step = slim.get_or_create_global_step()
 
@@ -64,8 +64,8 @@ def gan(
     tf.summary.scalar('learning_rate', learning_rate)
 
     # optimiser
-    optimizer_gen = tf.train.AdamOptimizer(learning_rate)
-    optimizer_disc = tf.train.AdamOptimizer(learning_rate)
+    optimizer_gen = tf.train.AdamOptimizer(learning_rate, beta1=0.5)
+    optimizer_disc = tf.train.AdamOptimizer(learning_rate, beta1=0.5)
 
     # train op
     train_variables = tf.trainable_variables()
