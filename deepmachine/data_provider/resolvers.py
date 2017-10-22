@@ -773,10 +773,10 @@ def decode_mask(feature, *args, **kargs):
     return tf.image.decode_png(feature['mask'])
 
 
-ResolveMaskedImage={
+ResolveMaskedImage = {
     'inputs': decode_jpeg,
     'masks': decode_mask
-})
+}
 
 ResolveMaskedPairedSeq = {
     'inputs': paired_masked_seq_resolver,
