@@ -88,12 +88,13 @@ def loss_posegan_discriminator(data_eps, network_eps, alpha=1.0):
 # LSTM GAN
 def loss_lstm_discriminator(data_eps, network_eps, alpha=1.0):
     _, states = network_eps
-    logits_pred = states['discriminator_pred']
-    logits_gt = states['discriminator_gt']
+    discriminator_loss = 0
+    for logits_pred, logits_gt in zip(states['discriminator_pred'],states['discriminator_gt']):
 
-    discriminator_loss = tf.reduce_mean(-(tf.log(logits_gt + EPS) + tf.log(1 - logits_pred + EPS)))
+        discriminator_loss += tf.reduce_mean(-(tf.log(logits_gt + EPS) + tf.log(1 - logits_pred + EPS)))
+        
     discriminator_loss = discriminator_loss * alpha
-    
+
     tf.losses.add_loss(discriminator_loss, loss_collection='discriminator_loss')
     tf.losses.add_loss(discriminator_loss)
 
