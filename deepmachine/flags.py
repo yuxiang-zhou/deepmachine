@@ -1,8 +1,10 @@
 import tensorflow as tf
 
-slim = tf.contrib.slim
-
 FLAGS = tf.app.flags.FLAGS
+
+# catching extra 'f' flag from jupyter notebook
+tf.app.flags.DEFINE_string('f', '', 'kernel')
+
 # data parameters
 tf.app.flags.DEFINE_string('dataset_dir', '',
                            '''Directory where to load datas '''
