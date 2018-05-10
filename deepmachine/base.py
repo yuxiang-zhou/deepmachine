@@ -44,7 +44,7 @@ class DeepMachine(object):
         # cached objects
         self._sess = None
         self._train_graph = None
-        self._run_graph = None
+        self._inception_graph = None
         self._test_graph = None
 
         # configurable ops
@@ -243,7 +243,7 @@ class DeepMachine(object):
 
     def _run(self, data, dtype, feed_dict={}, **kwargs):
         # build graph if needed
-        if self._run_graph is None:
+        if self._inception_graph is None:
             with tf.Graph().as_default() as g:
 
                 # inputs placeholder
@@ -264,11 +264,11 @@ class DeepMachine(object):
                 if variables_to_restore:
                     self._run_saver = tf.train.Saver(variables_to_restore)
 
-            self._run_graph = g
+            self._inception_graph = g
 
         # start session
         sess, need_restart = self._get_session(
-            self._run_graph,
+            self._inception_graph,
             return_restart=True)
 
         if need_restart and self._run_saver:
@@ -284,7 +284,7 @@ class DeepMachine(object):
         if self._sess is None:
             restart = True
         else:
-            if self._sess.graph is not self._run_graph:
+            if self._sess.graph is not self._inception_graph:
                 self._sess.close()
                 restart = True
 
@@ -298,5 +298,5 @@ class DeepMachine(object):
 
     def _reset_graph(self):
         self._train_graph = None
-        self._run_graph = None
+        self._inception_graph = None
         self._test_graph = None

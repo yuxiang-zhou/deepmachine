@@ -371,7 +371,7 @@ def create_discriminator(discrim_inputs, discrim_targets, reuse=False, name='dis
         # layer_4: [batch, 32, 32, ndf * 4] => [batch, 31, 31, ndf * 8]
         for i in range(n_layers):
             with tf.variable_scope("layer_%d" % (len(layers) + 1)):
-                out_channels = ndf * min(2**(i+1), 8)
+                out_channels = ndf * min(2**(n_layers-i-1), 8)
                 stride = 1 if i == n_layers - 1 else 2  # last layer here has stride 1
                 convolved = conv(layers[-1], out_channels, stride=stride)
                 normalized = batchnorm(convolved)

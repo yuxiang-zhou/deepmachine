@@ -1,10 +1,9 @@
 import tensorflow as tf
-from deepmachine.flags import FLAGS
 
 slim = tf.contrib.slim
 
 
-def restore(pretrained_model_checkpoint_path=FLAGS.pretrained_model_checkpoint_path):
+def restore(pretrained_model_checkpoint_path=None):
     init_fn = None
 
     if pretrained_model_checkpoint_path:
@@ -17,7 +16,7 @@ def restore(pretrained_model_checkpoint_path=FLAGS.pretrained_model_checkpoint_p
     return init_fn
 
 
-def restore_gan_generator_from_ckpt(checkpoint_path=FLAGS.pretrained_model_checkpoint_path):
+def restore_gan_generator_from_ckpt(checkpoint_path=None):
     init_fn = None
 
     if checkpoint_path:
