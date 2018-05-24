@@ -59,23 +59,34 @@ def Pix2Pix(input_pairs, is_training=True, n_channels=3, **kwargs):
 def LSTMPix2Pix(input_seqs, is_training=True, n_channels=3, **kwargs):
     with slim.arg_scope([slim.batch_norm, slim.layers.dropout], is_training=is_training):
         states = {}
-
-        # inputs
-        targets = input_seqs[:, 0, :, :, :n_channels]
-        inputs = input_seqs[:, 0, :, :, n_channels:n_channels*2]
-        masks = input_seqs[:, 0, :, :, n_channels*2:n_channels*3]
-
-        targets *= masks
         
-        # generators
-        prediction = gan.create_generator(
-            inputs, n_channels, reuse=False, name="generator")
+        num_seq = 3
+        targets_all = input_seqs[..., :n_channels]
+        inputs_all = input_seqs[..., n_channels:n_channels*2]
+        masks_all = input_seqs[..., n_channels*2:n_channels*3]
+        
+        states['discriminator_gt'] = []
+        states['discriminator_pred'] = []
+        states['generator_pred'] = []
+        
+        for seq_id in range(num_seq):
+            # inputs
+            targets = targets_all[:,seq_id,:,:,:]
+            inputs = inputs_all[:,seq_id,:,:,:]
+            masks = masks_all[:,seq_id,:,:,:]
 
-        # discriminators
-        states['discriminator_gt'] = gan.create_discriminator(
-            inputs, targets, reuse=False, name='discriminator')
-        states['discriminator_pred'] = gan.create_discriminator(
-            inputs, prediction, reuse=True, name='discriminator')
+            targets *= masks
+
+            # generators
+            prediction = gan.create_generator(
+                inputs, n_channels * 2, reuse=False, name="generator/%02d"%seq_id)
+
+            states['generator_pred'].append(prediction)
+            # discriminators
+            states['discriminator_gt'].append(gan.create_discriminator(
+                inputs, targets, reuse=False, name='discriminator/%02d'%seq_id))
+            states['discriminator_pred'].append(gan.create_discriminator(
+                inputs, prediction, reuse=True, name='discriminator/%02d'%seq_id))
 
         return prediction, states
 
