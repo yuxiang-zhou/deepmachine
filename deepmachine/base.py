@@ -20,7 +20,7 @@ class DeepMachine(object):
     """docstring for DeepMachine"""
 
     def __init__(self,
-                 network_op,
+                 network_op=None,
                  restore_path=None,
                  summary_ops=[],
                  losses_ops=[],
@@ -44,8 +44,9 @@ class DeepMachine(object):
         # cached objects
         self._sess = None
         self._train_graph = None
-        self._run_graph = None
+        self._inception_graph = None
         self._test_graph = None
+        self._inception_saver = None
 
         # configurable ops
         self.network_op = network_op
@@ -235,21 +236,30 @@ class DeepMachine(object):
                     summary_op=tf.summary.merge(summary_ops),
                     eval_interval_secs=30)
 
-    def run_one(self, data, dtype=tf.float32, feed_dict={}):
-        return self._run(data, dtype=dtype, feed_dict=feed_dict)
+    def run_one(self, feed_dict, dtype=tf.float32, shape=[1]):
 
-    def run_batch(self, data, dtype=tf.float32, feed_dict={}):
-        return self._run(data, dtype=dtype, feed_dict=feed_dict)
+        if type(feed_dict) is not dict:
+            shape = feed_dict.shape[-1]
+            feed_dict = {
+                'inputs:0': feed_dict
+            }
+        return self._run(feed_dict, dtype=dtype, shape=shape)
 
-    def _run(self, data, dtype, feed_dict={}, **kwargs):
-        # build graph if needed
-        if self._run_graph is None:
+    def run_batch(self, feed_dict, dtype=tf.float32, shape=[1]):
+        if type(feed_dict) is not dict:
+            feed_dict = {
+                'inputs:0': feed_dict
+            }
+        return self._run(feed_dict, dtype=dtype, shape=shape)
+
+    def _build_inception_graph(self, n_input_ch=3, dtype=tf.float32, **kwargs):
+        if self._inception_graph is None:
             with tf.Graph().as_default() as g:
 
                 # inputs placeholder
                 tfinputs = tf.placeholder(
                     dtype,
-                    shape=(None, None, None, data.shape[-1]),
+                    shape=(None, None, None, n_input_ch),
                     name='inputs'
                 )
                 
@@ -259,24 +269,61 @@ class DeepMachine(object):
                 self._run_net_eps = self.network_op(
                     tfinputs, is_training=False, **kwargs)
 
-                self._run_saver = None
+                outputs = tf.identity(self._run_net_eps[0], name='outputs')
+
+                self._inception_saver = None
                 variables_to_restore = slim.get_variables_to_restore()
                 if variables_to_restore:
-                    self._run_saver = tf.train.Saver(variables_to_restore)
+                    self._inception_saver = tf.train.Saver(variables_to_restore)
 
-            self._run_graph = g
+            self._inception_graph = g
 
         # start session
         sess, need_restart = self._get_session(
-            self._run_graph,
+            self._inception_graph,
             return_restart=True)
 
-        if need_restart and self._run_saver:
-            self._run_saver.restore(sess, self.restore_path)
-            
-        feed_dict['inputs:0'] = data
+        if need_restart and self._inception_saver:
+            self._inception_saver.restore(sess, self.restore_path)
 
-        return sess.run(self._run_net_eps, feed_dict=feed_dict)
+        return self._run_net_eps, sess
+
+    def load_frozen_inception_graph(self, graph_path, return_elements=['outputs:0'], name=""):
+        with tf.gfile.GFile(graph_path, "rb") as f:
+            restored_graph_def = tf.GraphDef()
+            restored_graph_def.ParseFromString(f.read())
+ 
+        with tf.Graph().as_default() as g:
+            self._run_net_eps = tf.import_graph_def(
+                restored_graph_def,
+                input_map=None,
+                return_elements=return_elements,
+                name=name
+            )
+
+        self._inception_graph = g
+
+    def _run(self, feed_dict, dtype=tf.float32, shape=[1], **kwargs):
+        # build graph if needed
+        end_points, sess = self._build_inception_graph(n_input_ch=shape[-1], dtype=dtype, **kwargs)
+
+        return sess.run(end_points, feed_dict=feed_dict)
+
+    def freeze_inception_graph(self, n_input_ch, output_graph, **kwargs):
+        # build graph if needed
+        end_points, sess = self._build_inception_graph(n_input_ch=n_input_ch, **kwargs)
+        input_graph_def = self._inception_graph.as_graph_def()
+        output_node_names = ['inputs', 'outputs'] + [v.name.replace(':0','') for k, v in end_points[1].items()]
+        output_graph_def = tf.graph_util.convert_variables_to_constants(
+            sess, # The session
+            input_graph_def, # input_graph_def is useful for retrieving the nodes 
+            output_node_names
+        )
+
+        with tf.gfile.GFile(output_graph, "wb") as f:
+            f.write(output_graph_def.SerializeToString())
+
+    
 
     def _get_session(self, graph, return_restart=False):
         restart = False
@@ -284,7 +331,7 @@ class DeepMachine(object):
         if self._sess is None:
             restart = True
         else:
-            if self._sess.graph is not self._run_graph:
+            if self._sess.graph is not self._inception_graph:
                 self._sess.close()
                 restart = True
 
@@ -298,5 +345,5 @@ class DeepMachine(object):
 
     def _reset_graph(self):
         self._train_graph = None
-        self._run_graph = None
+        self._inception_graph = None
         self._test_graph = None

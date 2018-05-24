@@ -74,7 +74,7 @@ def DenseIUVLandmark(
                     classification_channels=0,
                     deconv=deconv)
 
-            states['uv'] = net
+            states['uv'] = tf.identity(net, name='uv')
 
             # second hourglass
 
@@ -86,7 +86,7 @@ def DenseIUVLandmark(
                     classification_channels=0,
                     deconv=deconv)
 
-            states['heatmap'] = net
+            states['heatmap'] = tf.identity(net, name='heatmap')
             prediction = net
 
             return prediction, states
