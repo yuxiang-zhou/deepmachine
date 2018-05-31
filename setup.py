@@ -1,7 +1,8 @@
 from setuptools import setup, find_packages
+import versioneer
 
 setup(name='deepmachine',
-      version='0.1.7',
+      version=versioneer.get_version(),
       description='Deep Learning Framework',
       packages=find_packages(),
       author='Yuxiang ZHOU',
