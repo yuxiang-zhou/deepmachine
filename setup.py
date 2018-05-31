@@ -3,6 +3,7 @@ import versioneer
 
 setup(name='deepmachine',
       version=versioneer.get_version(),
+      cmdclass=versioneer.get_cmdclass(),
       description='Deep Learning Framework',
       packages=find_packages(),
       author='Yuxiang ZHOU',
