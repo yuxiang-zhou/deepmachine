@@ -6,7 +6,7 @@ from .. import utils
 from ..flags import FLAGS
 
 
-def loss_landmark_regression(data_eps, network_eps, alpha=1.0, heatmap_weight=500, collection=None):
+def loss_landmark_regression(data_eps, network_eps, alpha=1.0, heatmap_weight=500, collection='regression_loss'):
     gt_heatmap = data_eps['heatmap']
     predictions, _ = network_eps
 
@@ -17,6 +17,23 @@ def loss_landmark_regression(data_eps, network_eps, alpha=1.0, heatmap_weight=50
 
     # losses summaries
     tf.summary.scalar('losses/lms_pred', l2norm)
+
+    if collection is not None:
+        tf.losses.add_loss(l2norm, loss_collection=collection)
+
+
+def loss_landmark_reconstruction(data_eps, network_eps, alpha=1.0, heatmap_weight=500, collection='reconstruction_loss'):
+    gt_heatmap = data_eps['heatmap']
+    _, end_points = network_eps
+    rec_heatmap = end_points[-1]
+
+    # landmark-regression losses
+    weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1) * heatmap_weight
+    l2norm = slim.losses.mean_squared_error(
+        rec_heatmap, gt_heatmap, weights=weight_hm * alpha)
+
+    # losses summaries
+    tf.summary.scalar('losses/lms_rec', l2norm)
 
     if collection is not None:
         tf.losses.add_loss(l2norm, loss_collection=collection)

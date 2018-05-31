@@ -38,6 +38,41 @@ def adam(
     return train_op
 
 
+def adam(
+        initial_learning_rate,
+        learning_rate_decay_step,
+        batch_size,
+        learning_rate_decay_factor,
+        moving_average_ckpt):
+    # total losses
+    total_loss = tf.losses.get_total_loss()
+
+    # learning rate decay
+    global_step = slim.get_or_create_global_step()
+
+    learning_rate = tf.train.exponential_decay(
+        initial_learning_rate,
+        global_step,
+        learning_rate_decay_step,
+        learning_rate_decay_factor,
+        staircase=True)
+
+    tf.summary.scalar('learning_rate', learning_rate)
+
+    # train op
+    optimizer = tf.train.AdamOptimizer(learning_rate)
+
+    if moving_average_ckpt:
+        optimizer = tf.contrib.opt.MovingAverageOptimizer(optimizer)
+
+    train_op = slim.learning.create_train_op(
+        total_loss,
+        optimizer,
+        summarize_gradients=True)
+
+    return train_op
+
+
 def gan(
         initial_learning_rate,
         learning_rate_decay_step,
@@ -139,4 +174,57 @@ def cyclegan(
 
         train_op.append(t_op)
             
+    return train_op
+
+
+def adam_ae(
+        initial_learning_rate,
+        learning_rate_decay_step,
+        batch_size,
+        learning_rate_decay_factor,
+        moving_average_ckpt):
+
+    # get losses
+    reg_loss = tf.reduce_sum(tf.losses.get_losses(
+        loss_collection='regression_loss'))
+    rec_loss = tf.reduce_sum(tf.losses.get_losses(
+        loss_collection='reconstruction_loss'))
+    
+    # learning rate decay
+    global_step = slim.get_or_create_global_step()
+
+    learning_rate = tf.train.exponential_decay(
+        initial_learning_rate,
+        global_step,
+        learning_rate_decay_step,
+        learning_rate_decay_factor,
+        staircase=True)
+
+    tf.summary.scalar('learning_rate', learning_rate)
+
+    # optimiser
+    optimizer_reg = tf.train.AdamOptimizer(learning_rate)
+    optimizer_rec = tf.train.AdamOptimizer(learning_rate)
+
+    # train op
+    train_variables = tf.trainable_variables()
+
+    reg_variables_to_train = [
+        v for v in train_variables if v.name.startswith("regression")]
+    reg_train_op = slim.learning.create_train_op(
+        reg_loss,
+        optimizer_reg,
+        variables_to_train=reg_variables_to_train,
+        summarize_gradients=True)
+
+    rec_variables_to_train = [
+        v for v in train_variables if v.name.startswith("reconstruction")]
+    rec_train_op = slim.learning.create_train_op(
+        rec_loss,
+        optimizer_rec,
+        variables_to_train=rec_variables_to_train,
+        summarize_gradients=True)
+
+    train_op = [reg_train_op, rec_train_op]
+
     return train_op

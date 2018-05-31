@@ -21,7 +21,7 @@ tf.app.flags.DEFINE_float('initial_learning_rate', 0.0001,
                           '''Initial learning rate.''')
 tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.97,
                           '''Learning rate decay factor.''')
-tf.app.flags.DEFINE_integer('number_of_epochs', 0,
+tf.app.flags.DEFINE_integer('number_of_epochs', 100,
                             '''The max number of gradient steps to take during training. If the value is left as None, training proceeds indefinitely.''')
 tf.app.flags.DEFINE_integer('moving_average_ckpt', 0,
                             '''moving_average_ckpt''')

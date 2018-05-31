@@ -236,21 +236,22 @@ class DeepMachine(object):
                     summary_op=tf.summary.merge(summary_ops),
                     eval_interval_secs=30)
 
-    def run_one(self, feed_dict, dtype=tf.float32, shape=[1]):
+    def run_one(self, feed_dict, dtype=tf.float32, shape=[1], **kwargs):
 
         if type(feed_dict) is not dict:
-            shape = feed_dict.shape[-1]
+            shape = [feed_dict.shape[-1]]
             feed_dict = {
                 'inputs:0': feed_dict
             }
-        return self._run(feed_dict, dtype=dtype, shape=shape)
+        return self._run(feed_dict, dtype=dtype, shape=shape, **kwargs)
 
-    def run_batch(self, feed_dict, dtype=tf.float32, shape=[1]):
+    def run_batch(self, feed_dict, dtype=tf.float32, shape=[1], **kwargs):
         if type(feed_dict) is not dict:
+            shape = [feed_dict.shape[-1]]
             feed_dict = {
                 'inputs:0': feed_dict
             }
-        return self._run(feed_dict, dtype=dtype, shape=shape)
+        return self._run(feed_dict, dtype=dtype, shape=shape, **kwargs)
 
     def _build_inception_graph(self, n_input_ch=3, dtype=tf.float32, **kwargs):
         if self._inception_graph is None:
@@ -265,9 +266,20 @@ class DeepMachine(object):
                 
                 tfinputs = self.pre_process_fn(tfinputs)
 
+                # portential inputs
+                if 'data_eps' in kwargs:
+                    data_eps = {}
+                    for input_name in kwargs['data_eps']:
+                        tfinput_ext = tf.placeholder(
+                            dtype,
+                            shape=kwargs['data_eps'][input_name],
+                            name=input_name
+                        )
+                        data_eps[input_name] = tfinput_ext
+
                 # Define model graph.
                 self._run_net_eps = self.network_op(
-                    tfinputs, is_training=False, **kwargs)
+                    tfinputs, is_training=False, data_eps=data_eps)
 
                 outputs = tf.identity(self._run_net_eps[0], name='outputs')
 
@@ -276,7 +288,7 @@ class DeepMachine(object):
                 if variables_to_restore:
                     self._inception_saver = tf.train.Saver(variables_to_restore)
 
-            self._inception_graph = g
+                self._inception_graph = g
 
         # start session
         sess, need_restart = self._get_session(

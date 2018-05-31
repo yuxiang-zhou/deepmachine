@@ -4,6 +4,7 @@ import menpo.io as mio
 import functools
 import time
 import traceback
+import tensorflow as tf
 
 from menpo.image import Image
 from menpo.shape import PointCloud
@@ -18,6 +19,8 @@ from .. import ops
 from .. import networks
 from ..flags import FLAGS
 
+
+slim = tf.contrib.slim
 
 def get_dense_pose_net():
     # create machine
@@ -135,6 +138,85 @@ def get_inception_hourglass_pose():
     return model
 
 
+def get_ae_inception_hourglass_pose():
+    # create machine
+    model = deepmachine.DeepMachine(
+        network_op=functools.partial(
+            networks.base.StackedHourglassAE,
+            n_channels=16,
+            n_stacks=2,
+            deconv='transpose+conv',
+            bottleneck='bottleneck_inception'
+        )
+    )
+
+    # add losses
+    def loss_stacked_landmark_regression(data_eps, network_eps, alpha=1.0, heatmap_weight=500):
+        gt_heatmap = data_eps['heatmap']
+        _, states = network_eps
+
+        weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1) * heatmap_weight
+        l2norm = 0
+
+        for idx_stack, predictions in enumerate(states[:2]):
+
+            # landmark-regression losses
+            l2norm += slim.losses.mean_squared_error(
+                predictions, gt_heatmap, weights=weight_hm * alpha)
+
+            # losses summaries
+            tf.summary.scalar('losses/lms_stack_%02d' % idx_stack, l2norm)
+
+        tf.losses.add_loss(l2norm, loss_collection='regression_loss')
+
+    model.add_loss_op(functools.partial(loss_stacked_landmark_regression, alpha=1.0))
+    model.add_loss_op(functools.partial(losses.loss_landmark_regression, alpha=1.0))
+    model.add_loss_op(functools.partial(losses.loss_landmark_reconstruction, alpha=1.0))
+
+    # add summaries
+    def summary_HG(data_eps, network_eps, is_training=True, n_channel=16):
+        predictions, status = network_eps
+
+        tf.summary.image(
+            'predictions/HG_landmarks',
+            utils.tf_n_channel_rgb(status[1], n_channel),
+            max_outputs=3)
+
+
+    model.add_summary_op(summary.summary_landmarks)
+    model.add_summary_op(summary_HG)
+
+
+    # set evaluation op
+    model.eval_op = ops.eval.pose_pckh
+    model.train_op = ops.train.adam_ae
+
+    return model
+
+
+def get_pose_auto_encoder():
+    # create machine
+    model = deepmachine.DeepMachine(
+        network_op=functools.partial(
+            networks.base.AutoEncoder,
+            n_channels=16,
+            deconv='transpose+conv'
+        )
+    )
+
+    # add losses
+    model.add_loss_op(functools.partial(losses.loss_landmark_reconstruction, alpha=1.0))
+
+    # add summaries
+    model.add_summary_op(summary.summary_landmarks)
+
+    # set evaluation op
+    model.eval_op = ops.eval.pose_pckh
+    model.train_op = ops.train.adam
+
+    return model
+
+
 def get_se_inception_hourglass_pose():
     # create machine
     model = deepmachine.DeepMachine(
@@ -152,6 +234,7 @@ def get_se_inception_hourglass_pose():
 
     # add summaries
     model.add_summary_op(summary.summary_landmarks)
+    
 
     # set evaluation op
     model.eval_op = ops.eval.pose_pckh

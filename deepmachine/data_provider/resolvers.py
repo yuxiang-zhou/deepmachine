@@ -87,7 +87,7 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
         image, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    image.set_shape([None, None, 3])
+    image.set_shape([256, 256, 3])
 
     return image
 
@@ -164,7 +164,7 @@ def heatmap_resolver_pose(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
         gt_heatmap, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    gt_heatmap.set_shape([None, None, 16])
+    gt_heatmap.set_shape([256, 256, 16])
 
     return gt_heatmap
 
@@ -242,7 +242,7 @@ def heatmap_resolver_face(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
         gt_heatmap, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    gt_heatmap.set_shape([None, None, 68])
+    gt_heatmap.set_shape([256, 256, 68])
 
     return gt_heatmap
 
@@ -333,7 +333,7 @@ def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
         iuv, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    iuv.set_shape([None, None, n_parts * 3])
+    iuv.set_shape([256, 256, n_parts * 3])
 
     return iuv
 
@@ -385,7 +385,7 @@ def iuv_resolver_face(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])
     iuv = iuv[..., 1:]
 
     # shape defination
-    iuv.set_shape([None, None, 2])
+    iuv.set_shape([256, 256, 2])
 
     return iuv
 
@@ -441,7 +441,7 @@ def image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]
         image, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    image.set_shape([None, None, 3])
+    image.set_shape([256, 256, 3])
 
     return image
 
@@ -524,7 +524,7 @@ def image_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0
         image, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    image.set_shape([None, None, 3])
+    image.set_shape([256, 256, 3])
 
     return image
 
@@ -629,7 +629,7 @@ def heatmap_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
         gt_heatmap, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    gt_heatmap.set_shape([None, None, 16])
+    gt_heatmap.set_shape([256, 256, 16])
 
     return gt_heatmap
 
@@ -653,7 +653,7 @@ def cyclegan_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0,
     image = tf.random_crop(image, [256, 256, 3])
 
     # shape defination
-    image.set_shape([None, None, 3])
+    image.set_shape([256, 256, 3])
 
     return image
 
