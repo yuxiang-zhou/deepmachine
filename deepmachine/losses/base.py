@@ -11,7 +11,7 @@ def loss_landmark_regression(data_eps, network_eps, alpha=1.0, heatmap_weight=50
     predictions, _ = network_eps
 
     # landmark-regression losses
-    weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1) * heatmap_weight
+    weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1.0) * heatmap_weight
     l2norm = slim.losses.mean_squared_error(
         predictions, gt_heatmap, weights=weight_hm * alpha)
 
@@ -28,7 +28,7 @@ def loss_landmark_reconstruction(data_eps, network_eps, alpha=1.0, heatmap_weigh
     rec_heatmap = end_points[-1]
 
     # landmark-regression losses
-    weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1) * heatmap_weight
+    weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1.0) * heatmap_weight
     l2norm = slim.losses.mean_squared_error(
         rec_heatmap, gt_heatmap, weights=weight_hm * alpha)
 
@@ -43,7 +43,7 @@ def loss_stacked_landmark_regression(data_eps, network_eps, alpha=1.0, heatmap_w
     gt_heatmap = data_eps['heatmap']
     _, states = network_eps
 
-    weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1) * heatmap_weight
+    weight_hm = utils.get_weight(gt_heatmap, ng_w=0.1, ps_w=1.0) * heatmap_weight
 
     for idx_stack, predictions in enumerate(states):
 

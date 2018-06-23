@@ -54,6 +54,7 @@ def StackedHourglassAE(
     deconv='transpose+conv+relu',
     n_channels=16,
     n_stacks=2,
+    n_features=8,
     bottleneck='bottleneck',
     **kwargs
 ):
@@ -69,16 +70,16 @@ def StackedHourglassAE(
             bottleneck=bottleneck,
             **kwargs)
 
-        embedding_input = autoencoder.encoder(net, out_channel=512, scope='encoder_input')
+        embedding_input = autoencoder.encoder(net, out_channel=n_features, scope='encoder_input',is_training=is_training)
         embedding_input = tf.identity(embedding_input, 'embedding_input')
 
     with tf.variable_scope('reconstruction'):
         gt_hm = kwargs['data_eps']['heatmap']
-        embedding_ae = autoencoder.encoder(gt_hm, out_channel=512, scope='encoder_ae')
+        embedding_ae = autoencoder.encoder(gt_hm, out_channel=n_features, scope='encoder_ae',is_training=is_training)
         embedding_ae = tf.identity(embedding_ae, 'embedding_ae')
 
-        reconstruction = autoencoder.decoder(embedding_ae, out_channel=n_channels, scope='decoder', reuse=False)
-        prediction = autoencoder.decoder(embedding_input, out_channel=n_channels, scope='decoder', reuse=True)
+        reconstruction = autoencoder.decoder(embedding_ae, out_channel=n_channels, scope='decoder', reuse=False,is_training=is_training)
+        prediction = autoencoder.decoder(embedding_input, out_channel=n_channels, scope='decoder', reuse=True,is_training=is_training)
 
     states += [embedding_input, embedding_ae, prediction, reconstruction]
 
@@ -88,19 +89,20 @@ def StackedHourglassAE(
 def AutoEncoder(
     inputs,
     is_training=True,
-    deconv='transpose+conv+relu',
+    deconv='transpose+conv',
+    n_features=512,
     n_channels=16,
     **kwargs
 ):
 
     inputs = kwargs['data_eps']['heatmap']
     with tf.variable_scope('reconstruction'):
-        net = autoencoder.encoder(inputs, out_channel=512, scope='encoder_input')
+        net = autoencoder.encoder(inputs, out_channel=n_features, scope='encoder_input',is_training=is_training)
         net = tf.identity(net, 'embedding')
 
         states = [net]
 
-        prediction = autoencoder.decoder(net, out_channel=n_channels, scope='decoder')
+        prediction = autoencoder.decoder(net, out_channel=n_channels, scope='decoder', deconv=deconv,is_training=is_training)
 
         states += [prediction]
 

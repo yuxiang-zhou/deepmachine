@@ -32,8 +32,7 @@ def iuv_rgb(iuv, colour_set='jet'):
     iuv = iuv.squeeze()
     n_channel = iuv.shape[-1] // 3
 
-    index = np.argmax(iuv[..., :n_channel], axis=-
-                      1).squeeze().astype(np.ushort)
+    index = np.argmax(iuv[..., :n_channel], axis=-1).squeeze().astype(np.ushort)
 
     u = iuv[..., n_channel:n_channel * 2]
     v = iuv[..., n_channel * 2:]

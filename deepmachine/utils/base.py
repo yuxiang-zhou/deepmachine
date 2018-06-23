@@ -17,6 +17,8 @@ slim = tf.contrib.slim
 ResizeMethod = tf.image.ResizeMethod
 
 
+### tf functions
+
 def caffe_preprocess(image):
     VGG_MEAN = np.array([102.9801, 115.9465, 122.7717])
     # RGB -> BGR
@@ -118,6 +120,34 @@ def tf_records_iterator(path, feature=None):
 
         yield example.features.feature
 
+
+### python functions
+
+def lms_to_heatmap(lms, h, w, sigma=5):
+    xs, ys = np.meshgrid(np.arange(0., w),
+                         np.arange(0., h))
+    gaussian = (1. / (sigma * np.sqrt(2. * np.pi)))
+
+    def gaussian_fn(l):
+        y, x = l
+
+        return np.exp(-0.5 * (np.power(ys - y, 2) + np.power(xs - x, 2)) *
+                      np.power(1. / sigma, 2.)) * gaussian * 17.
+
+
+    img_hm = np.stack(list(map(
+        gaussian_fn, 
+        lms
+    )))
+
+    return img_hm
+
+def heatmap_to_lms(heatmap):
+    hs = np.argmax(np.max(heatmap, 1), 0)
+    ws = np.argmax(np.max(heatmap, 0), 0)
+    lms = np.stack([hs, ws]).T
+
+    return lms
 
 def crop_image_bounding_box(img, bbox, res, base=200., order=1):
 

@@ -267,8 +267,8 @@ class DeepMachine(object):
                 tfinputs = self.pre_process_fn(tfinputs)
 
                 # portential inputs
+                data_eps = {}
                 if 'data_eps' in kwargs:
-                    data_eps = {}
                     for input_name in kwargs['data_eps']:
                         tfinput_ext = tf.placeholder(
                             dtype,
@@ -348,7 +348,8 @@ class DeepMachine(object):
                 restart = True
 
         if restart:
-            self._sess = tf.Session(graph=graph)
+            config = tf.ConfigProto(device_count = {'GPU': 0})
+            self._sess = tf.Session(graph=graph, config=config)
 
         if return_restart:
             return self._sess, restart

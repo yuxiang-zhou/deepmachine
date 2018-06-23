@@ -6,7 +6,7 @@ from tensorflow.python.framework import ops
 
 from .stackedHG import hourglass_arg_scope_tf, bottleneck_module, deconv_layer, hourglass
 
-def encoder(inputs, out_channel=1024, reuse=False, scope='encoder'):
+def encoder(inputs, out_channel=64, conv_channel=64, reuse=False, scope='encoder', is_training=True):
     batch_size, input_h, input_w, _ = inputs.get_shape().as_list()
     
     with tf.variable_scope(scope):
@@ -19,27 +19,32 @@ def encoder(inputs, out_channel=1024, reuse=False, scope='encoder'):
             [slim.conv2d], 
             activation_fn=tf.nn.leaky_relu,
             normalizer_fn=None,
-            stride=2
+            normalizer_params={'is_training': is_training},
+            stride=1
         ):
 
-            net = slim.conv2d(inputs, out_channel // 8, [5, 5])
-            net = slim.conv2d(net, out_channel // 4, [5, 5])
-            net = slim.conv2d(net, out_channel // 2, [5, 5])
-            net = slim.conv2d(net, out_channel, [5, 5])
-            # net = slim.flatten(net)
-            # net = slim.fully_connected(net, out_channel, activation_fn=tf.nn.leaky_relu)
-            # net = slim.fully_connected(net, 32 * 32 * out_channel, activation_fn=tf.nn.leaky_relu)
-            # net = tf.reshape(net, [batch_size, 32, 32, out_channel])
+            net = slim.conv2d(inputs, conv_channel, [3, 3])
 
-            tf.summary.image(
-                'encoder',
-                tf.reduce_mean(tf.sigmoid(net), axis=-1)[..., None],
-                max_outputs=3)
+            net = slim.conv2d(net, conv_channel, [3, 3])
+            net = slim.conv2d(net, conv_channel * 2, [3, 3])
+            net = slim.max_pool2d(inputs, [2, 2])
+
+            net = slim.conv2d(net, conv_channel * 2, [3, 3])
+            net = slim.conv2d(net, conv_channel * 3, [3, 3])
+            net = slim.max_pool2d(inputs, [2, 2])
+
+            net = slim.conv2d(net, conv_channel * 3, [3, 3])
+            net = slim.conv2d(net, conv_channel * 3, [3, 3])
+
+            net = slim.flatten(net)
+            net = slim.dropout(net)
+            net = slim.fully_connected(net, out_channel, activation_fn=tf.nn.leaky_relu)
     
     return net
 
-def decoder(inputs, out_channel=3, reuse=False, scope='decoder'):
-    _, _, _, in_channel = inputs.get_shape().as_list()
+def decoder(inputs, out_channel=3, conv_channel=64, reuse=False, scope='decoder', deconv='transpose+conv', is_training=True):
+    batch_size, _ = inputs.get_shape().as_list()
+
     with tf.variable_scope(scope):
         if reuse:
             tf.get_variable_scope().reuse_variables()
@@ -49,15 +54,30 @@ def decoder(inputs, out_channel=3, reuse=False, scope='decoder'):
         with slim.arg_scope(
             [slim.conv2d_transpose],
             activation_fn=None,
-            normalizer_fn=None
+            normalizer_fn=None,
+            normalizer_params={'is_training': is_training},
         ):
-            net = deconv_layer(inputs, 2, in_channel // 2, method='transpose')
-            net = tf.nn.leaky_relu(net)
-            net = deconv_layer(net, 2, in_channel // 4, method='transpose')
-            net = tf.nn.leaky_relu(net)
-            net = deconv_layer(net, 2, in_channel // 8, method='transpose')
-            net = tf.nn.leaky_relu(net)
-            net = deconv_layer(net, 2, out_channel, method='transpose')
-            net = tf.sigmoid(net)
+            with slim.arg_scope(
+                [slim.conv2d],
+                activation_fn=tf.nn.leaky_relu,
+                normalizer_fn=None,
+                normalizer_params={'is_training': is_training},
+            ):
+                net = slim.dropout(inputs)
+                net = slim.fully_connected(inputs, 64 * 64 * conv_channel, activation_fn=tf.nn.leaky_relu)
+                net = tf.reshape(net, [batch_size, 64, 64, conv_channel])
+
+                net = slim.conv2d(net, conv_channel, [3, 3])
+                net = slim.conv2d(net, conv_channel * 2, [3, 3])
+                net = deconv_layer(net, 2, conv_channel, method=deconv)
+                net = tf.nn.leaky_relu(net)
+
+                net = slim.conv2d(net, conv_channel, [3, 3])
+                net = slim.conv2d(net, conv_channel * 2, [3, 3])
+                net = deconv_layer(net, 2, conv_channel, method=deconv)
+                net = tf.nn.leaky_relu(net)
+
+                net = slim.conv2d(net, conv_channel, [3, 3])
+                net = slim.conv2d(net, out_channel, [3, 3])
     
     return net

@@ -145,6 +145,7 @@ def get_ae_inception_hourglass_pose():
             networks.base.StackedHourglassAE,
             n_channels=16,
             n_stacks=2,
+            n_features=32,
             deconv='transpose+conv',
             bottleneck='bottleneck_inception'
         )
@@ -200,7 +201,8 @@ def get_pose_auto_encoder():
         network_op=functools.partial(
             networks.base.AutoEncoder,
             n_channels=16,
-            deconv='transpose+conv'
+            n_features=32,
+            deconv='transpose'
         )
     )
 

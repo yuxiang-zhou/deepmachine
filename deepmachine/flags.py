@@ -17,7 +17,7 @@ tf.app.flags.DEFINE_string('train_dir', 'ckpt/train',
                            '''Directory where to write event logs '''
                            '''and checkpoint.''')
 tf.app.flags.DEFINE_integer('batch_size', 1, '''The batch size to use.''')
-tf.app.flags.DEFINE_float('initial_learning_rate', 0.0001,
+tf.app.flags.DEFINE_float('initial_learning_rate', 2.5e-5,
                           '''Initial learning rate.''')
 tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.97,
                           '''Learning rate decay factor.''')

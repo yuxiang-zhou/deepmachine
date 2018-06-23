@@ -10,7 +10,7 @@ from menpo.image import Image
 from .. import utils
 
 
-def mpii_iterator(is_training, base=384):
+def mpii_iterator(is_training, base=384, full_joint=False):
     database_path = Path('/vol/atlas/databases/body/MPIIHumanPose')
 
     annotations = sio.loadmat(str(
@@ -76,6 +76,9 @@ def mpii_iterator(is_training, base=384):
                 else:
                     visiblepts.append(joint.id)
 
+            if full_joint and len(marked_ids) != 16:
+                continue
+
             if not (joints_lms == np.zeros((16, 2)) - 10000).all():
 
                 scale = 0
@@ -110,7 +113,7 @@ def mpii_iterator(is_training, base=384):
                 }
 
 
-def lsp_iterator(is_training, base=384):
+def lsp_iterator(is_training, base=384, full_joint=False):
     annotations = sio.loadmat(
         '/vol/atlas/databases/body/lsp_dataset/joints.mat', squeeze_me=True, struct_as_record=False)
     image_load_path = Path('/vol/atlas/databases/body/lsp_dataset/images')
@@ -141,6 +144,9 @@ def lsp_iterator(is_training, base=384):
         joints_lms[7] = (joints_lms[12] + joints_lms[13]) / 2.
         visiblepts += [6, 7]
         marked_ids += [6, 7]
+
+        if full_joint and len(marked_ids) != 16:
+            continue
 
         pimg.landmarks['JOINT'] = PointCloud(joints_lms)
 
@@ -177,7 +183,7 @@ def lsp_iterator(is_training, base=384):
         }
 
 
-def lsp_extended(base=384):
+def lsp_extended(base=384, full_joint=False):
     annotations = sio.loadmat(
         '/vol/atlas/databases/body/lspet_dataset_extend/joints.mat', squeeze_me=True, struct_as_record=False)
     image_load_path = Path(
@@ -210,6 +216,9 @@ def lsp_extended(base=384):
         joints_lms[7] = (joints_lms[12] + joints_lms[13]) / 2.
         marked_ids = list(marked_ids) + [6, 7]
         visiblepts = list(visiblepts)
+
+        if full_joint and len(marked_ids) != 16:
+            continue
 
         if 2 in visiblepts and 3 in visiblepts:
             visiblepts.append(6)

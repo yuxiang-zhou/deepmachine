@@ -806,7 +806,6 @@ ResolverHMPose = {
     'heatmap': heatmap_resolver_pose,
 }
 
-
 ResolverBBoxPose = {
     'inputs': image_bbox_resolver,
     'heatmap': heatmap_bbox_resolver
