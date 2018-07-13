@@ -51,6 +51,30 @@ def iuv_rgb(iuv, colour_set='jet'):
     return (u.dot(colours) / 255. + v.dot(colours) / 255.) / 2.
 
 
+def one_hot(a):
+    a = a.astype(np.int32)
+    n_parts = np.max(a) + 1
+    b = np.zeros((len(a), n_parts))
+    b[np.arange(len(a)), a] = 1
+    return b
+
+
+def rgb_iuv(rgb):
+    # formation
+    iuv_mask = rgb[..., 0]
+    n_parts = int(np.max(iuv_mask) + 1)
+    iuv_one_hot = one_hot(iuv_mask.flatten()).reshape(iuv_mask.shape + (n_parts,))
+
+    # normalised uv
+    uv = rgb[..., 1:] / 255. if np.max(rgb[..., 1:]) > 1 else rgb[..., 1:]
+    u = iuv_one_hot * uv[..., 0][..., None]
+    v = iuv_one_hot * uv[..., 1][..., None]
+
+    iuv = np.concatenate([iuv_one_hot, u, v], 2)
+
+    return iuv
+
+
 def hex_to_rgb(hex_str):
     hex_str = hex_str.strip()
 
@@ -65,13 +89,15 @@ def hex_to_rgb(hex_str):
     return np.array(rgb)
 
 
-def svs_rgb(pixels,
+def channels_to_rgb(pixels,
             colour_set='jet'):
     colours = sample_colours_from_colourmap(
         pixels.shape[-1], colour_set
     )
 
     return pixels.dot(colours) / 255.
+
+svs_rgb = channels_to_rgb
 
 
 def tf_n_channel_rgb(inputs, n_feature, colour_set='jet'):

@@ -92,19 +92,22 @@ def AutoEncoder(
     deconv='transpose+conv',
     n_features=512,
     n_channels=16,
+    encoder_key='heatmap',
     **kwargs
 ):
 
-    inputs = kwargs['data_eps']['heatmap']
+    inputs = kwargs['data_eps'][encoder_key]
+    states = {}
     with tf.variable_scope('reconstruction'):
         net = autoencoder.encoder(inputs, out_channel=n_features, scope='encoder_input',is_training=is_training)
         net = tf.identity(net, 'embedding')
 
-        states = [net]
+        states['embedding'] = net
 
         prediction = autoencoder.decoder(net, out_channel=n_channels, scope='decoder', deconv=deconv,is_training=is_training)
 
-        states += [prediction]
+        states['output'] = prediction
+        states[encoder_key] = prediction
 
     return prediction, states
 

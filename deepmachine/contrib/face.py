@@ -66,3 +66,26 @@ def get_dense_cascade_face():
     model.eval_op = ops.eval.face_nmse
 
     return model
+
+def get_face_iuv_auto_encoder():
+    # create machine
+    model = deepmachine.DeepMachine(
+        network_op=functools.partial(
+            networks.base.AutoEncoder,
+            n_channels=6,
+            n_features=128,
+            deconv='transpose',
+            encoder_key='iuv'
+        )
+    )
+
+    # add losses
+    model.add_loss_op(functools.partial(losses.loss_iuv_regression, alpha=1.0, n_feature=2))
+
+    # add summaries
+    model.add_summary_op(functools.partial(summary.summary_iuv, n_feature=2))
+
+    # set train_op
+    model.train_op = ops.train.adam
+
+    return model

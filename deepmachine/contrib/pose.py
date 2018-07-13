@@ -201,7 +201,7 @@ def get_pose_auto_encoder():
         network_op=functools.partial(
             networks.base.AutoEncoder,
             n_channels=16,
-            n_features=32,
+            n_features=48,
             deconv='transpose'
         )
     )

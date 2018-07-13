@@ -16,6 +16,11 @@ def _undefined_op(*args, **kwargs):
     raise NotImplementedError
 
 
+class DeepMachineK(tf.keras.Model):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
 class DeepMachine(object):
     """docstring for DeepMachine"""
 
@@ -289,6 +294,7 @@ class DeepMachine(object):
                     self._inception_saver = tf.train.Saver(variables_to_restore)
 
                 self._inception_graph = g
+                self._inception_init_op = tf.global_variables_initializer()
 
         # start session
         sess, need_restart = self._get_session(
@@ -296,6 +302,7 @@ class DeepMachine(object):
             return_restart=True)
 
         if need_restart and self._inception_saver:
+            sess.run(self._inception_init_op)
             self._inception_saver.restore(sess, self.restore_path)
 
         return self._run_net_eps, sess

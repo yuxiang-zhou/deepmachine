@@ -59,14 +59,14 @@ def summary_uv(data_eps, network_eps, is_training=True):
         max_outputs=3)
 
 
-def summary_iuv(data_eps, network_eps, is_training=True):
+def summary_iuv(data_eps, network_eps, is_training=True, n_feature=26):
 
     iuv_gt = data_eps['iuv']
     _, states = network_eps
-    iuv_pred = states['uv']
+    iuv_pred = states['iuv']
 
-    iuv_gt_rgb = utils.tf_iuv_rgb(iuv_gt)
-    iuv_pred_rgb = utils.tf_iuv_rgb(iuv_pred)
+    iuv_gt_rgb = utils.tf_iuv_rgb(iuv_gt, n_feature=n_feature)
+    iuv_pred_rgb = utils.tf_iuv_rgb(iuv_pred, n_feature=n_feature)
 
     # iuv summary
     tf.summary.image(
@@ -75,7 +75,7 @@ def summary_iuv(data_eps, network_eps, is_training=True):
         max_outputs=3)
 
     tf.summary.image(
-        'gt/iuv ',
+        'gt/iuv',
         iuv_gt_rgb,
         max_outputs=3)
 

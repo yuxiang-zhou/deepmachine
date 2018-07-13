@@ -59,7 +59,7 @@ def loss_iuv_regression(data_eps, network_eps, alpha=1.0, n_feature=26):
     cascade_gt = data_eps['iuv']
     _, states = network_eps
 
-    cascade_prediction = states['uv']
+    cascade_prediction = states['iuv']
 
     # mask index cross-entropy loss
     uv_pred_idx = cascade_prediction[..., :n_feature]  # 26 channels

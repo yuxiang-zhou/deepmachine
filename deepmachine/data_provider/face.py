@@ -124,8 +124,6 @@ class Dataset:
         uv.set_shape((self.uv_channels * width * height))
         uv = tf.reshape(uv, (height, width, self.uv_channels))
 
-
-
         if self.is_training:
             begin = tf.random_uniform((), 0, 20, tf.int32)
             size = tf.reduce_min(
@@ -218,7 +216,7 @@ class FaceDatasetMixer():
         queue = None
         enqueue_ops = []
         for p in self.providers:
-            tensors = p.get(*args,**kwargs)
+            tensors = p.get(*args, **kwargs)
 
             shapes = [x.get_shape() for x in tensors]
 
@@ -262,22 +260,6 @@ def DenseFaceProvider(path, batch_size=1, **kwargs):
         is_training=True)
 
 
-
-DenseFaceCascadeProvider = functools.partial(
-    TFRecordNoFlipProvider,
-    features=FeatureIUV,
-    augmentation=True,
-    resolvers=ResolverIUVFace
-)
-
-HeatmapFaceProvider = functools.partial(
-    TFRecordNoFlipProvider,
-    features=FeatureHeatmap,
-    augmentation=True,
-    resolvers=ResolverHMFace
-)
-
-
 class TFUVCompletionProvider(Provider):
     def __init__(self,
                  dirpath,
@@ -308,7 +290,8 @@ class TFUVCompletionProvider(Provider):
         db_path = Path(self._dirpath)
         for gt_uv_path in print_progress(list(db_path.glob('*.jpg'))):
             for mask_id in range(41):
-                mask_path = gt_uv_path.parent / ('%s_%03d.png'%(gt_uv_path.stem, mask_id))
+                mask_path = gt_uv_path.parent / \
+                    ('%s_%03d.png' % (gt_uv_path.stem, mask_id))
                 uv_filelist.append(str(gt_uv_path))
                 mask_filelist.append(str(mask_path))
 
@@ -370,3 +353,28 @@ class TFUVCompletionProvider(Provider):
             retval[k] = b
 
         return retval
+
+
+DenseFaceCascadeProvider = functools.partial(
+    TFRecordNoFlipProvider,
+    features=FeatureIUV,
+    augmentation=True,
+    resolvers=ResolverIUVFace
+)
+
+HeatmapFaceProvider = functools.partial(
+    TFRecordNoFlipProvider,
+    features=FeatureHeatmap,
+    augmentation=True,
+    resolvers=ResolverHMFace
+)
+
+ImageIUVProvider = functools.partial(
+    TFRecordNoFlipProvider,
+    features=FeatureIUV,
+    augmentation=True,
+    resolvers={
+        'inputs': image_resolver,
+        'iuv': functools.partial(iuv_resolver, from_image=False, dtype=tf.uint8, n_parts=2)
+    }
+)
