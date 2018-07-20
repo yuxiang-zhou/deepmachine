@@ -1,20 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow as tf
 import menpo.io as mio
 from menpo.image import Image
 from menpo.shape import PointCloud
-
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.python.training import optimizer as tf_optimizer
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import variables as tf_variables
 
 from menpo.transform import Translation, Scale
 from menpo.shape import PointCloud

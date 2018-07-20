@@ -1,7 +1,7 @@
 import tensorflow as tf
 import functools
 slim = tf.contrib.slim
-from deepmachine import utils
+from .. import utils
 
 
 def summary_input(data_eps, network_eps, is_training=True):
@@ -20,17 +20,17 @@ def summary_input(data_eps, network_eps, is_training=True):
                 inputs, [batch_size, height, width, -1, 3]), [0, 3, 1, 2, 4])
         ),
         max_outputs=3)
-    
-    
+
+
 def summary_input_LSTM(data_eps, network_eps, is_training=True, n_channels=3):
     input_seqs = data_eps['inputs']
-    
+
     # inputs
     targets = data_eps['inputs'][:, 0, :, :, :n_channels]
     inputs = data_eps['inputs'][:, 0, :, :, n_channels:n_channels*2]
     masks = data_eps['inputs'][:, 0, :, :, n_channels*2:n_channels*3]
     targets *= masks
-    
+
     tf.summary.image(
         'images/input_pair',
         tf.concat([inputs, targets], -2),
@@ -101,7 +101,7 @@ def summary_predictions(data_eps, network_eps, is_training=True):
     batch_size = tf.shape(predictions)[0]
     height = tf.shape(predictions)[1]
     width = tf.shape(predictions)[2]
-    
+
     tf.summary.image(
         'predictions/batch',
         tf.map_fn(
@@ -110,6 +110,7 @@ def summary_predictions(data_eps, network_eps, is_training=True):
                 predictions, [batch_size, height, width, -1, 1]), [0, 3, 1, 2, 4])
         ),
         max_outputs=3)
+
 
 def summary_output_image_batch(data_eps, network_eps, is_training=True):
     inputs, _ = network_eps
@@ -127,3 +128,46 @@ def summary_output_image_batch(data_eps, network_eps, is_training=True):
                 inputs, [batch_size, height, width, -1, 3]), [0, 3, 1, 2, 4])
         ),
         max_outputs=3)
+
+
+class TBSummary(tf.keras.callbacks.TensorBoard):
+
+    def set_model(self, model):
+
+        # add learning rate summary
+        optimizer = model.optimizer
+        lr = optimizer.lr * \
+            (1. / (1. + optimizer.decay * tf.to_float(optimizer.iterations)))
+        tf.summary.scalar('learning_rate', lr)
+
+        # add image summary
+        for index, tf_inputs in enumerate(model.inputs):
+
+            # normalise images
+            tf_inputs_shape = tf_inputs.shape.as_list()
+            if tf_inputs_shape[-1] not in [1, 3, 4]:
+                tf_inputs = tf.transpose(tf_inputs, [0, 3, 1, 2])
+                tf_inputs = tf.reshape(
+                    tf_inputs, shape=[-1, tf_inputs_shape[1], tf_inputs_shape[2], 1])
+                tf_inputs = utils.tf_image_batch_to_grid(tf_inputs)[None, ...]
+            tf.summary.image('inputs_%02d' % index, tf_inputs)
+
+        for index, tf_outputs in enumerate(model.outputs):
+            tf_outputs_shape = tf_outputs.shape.as_list()
+            if tf_outputs.shape.as_list()[-1] not in [1, 3, 4]:
+                tf_outputs = tf.transpose(tf_outputs, [0, 3, 1, 2])
+                tf_outputs = tf.reshape(
+                    tf_outputs, shape=[-1, tf_outputs_shape[1], tf_outputs_shape[2], 1])
+                tf_outputs = utils.tf_image_batch_to_grid(
+                    tf_outputs)[None, ...]
+
+            tf.summary.image('outputs_%02d' % index, tf_outputs)
+
+        super().set_model(model)
+
+    def on_epoch_end(self, epoch, logs=None):
+        self.model.progress_bar.update(
+            epoch,
+            values=logs.items()
+        )
+        super().on_epoch_end(epoch, logs=logs)
