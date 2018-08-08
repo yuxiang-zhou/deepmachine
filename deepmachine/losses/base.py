@@ -4,15 +4,19 @@ from . import helper
 from .. import utils
 from ..flags import FLAGS
 
+get_custom_objects = tf.keras.utils.get_custom_objects
+
+
 def loss_heatmap_regression(y_true, y_pred, heatmap_weight=500):
 
     # landmark-regression losses
-    weight_hm = utils.tf_get_weight(y_true, ng_w=0.1, ps_w=1.0) * heatmap_weight
+    weight_hm = utils.tf_get_weight(
+        y_true, ng_w=0.1, ps_w=1.0) * heatmap_weight
     l2norm = tf.losses.mean_squared_error(
         y_pred, y_true, weights=weight_hm)
 
     tf.summary.scalar('losses/heatmap', l2norm)
-    
+
     return l2norm
 
 
@@ -23,7 +27,7 @@ def loss_iuv_regression(y_true, y_pred, n_feature=26):
     uv_pred_idx = y_pred[..., :n_feature]  # 26 channels
     uv_gt_idx = y_true[..., :n_feature]  # 26 channels
 
-    celoss = tf.losses.softmax_cross_entropy(uv_pred_idx, uv_gt_idx) * 5 
+    celoss = tf.losses.softmax_cross_entropy(logits = uv_pred_idx, onehot_labels = uv_gt_idx)
 
     # uv regression losses
     uv_pred = y_pred[..., n_feature:]  # 52 channels
@@ -41,3 +45,9 @@ def loss_iuv_regression(y_true, y_pred, n_feature=26):
     tf.summary.scalar('losses/uv_cross_entropy', celoss)
 
     return celoss + l1smooth_U + l1smooth_V
+
+
+get_custom_objects().update({
+    'loss_heatmap_regression': loss_heatmap_regression,
+    'loss_iuv_regression': loss_iuv_regression,
+})

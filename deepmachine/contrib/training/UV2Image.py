@@ -314,8 +314,6 @@ def custom_summary(data, endpoints, is_training=True):
 # #### Prepare for Training
 
 
-
-tf.reset_default_graph()
 # create machine
 # n_channels is the output channel number
 uv2image = dm.DeepMachine(

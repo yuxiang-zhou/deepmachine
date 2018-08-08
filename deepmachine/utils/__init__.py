@@ -4,4 +4,4 @@ from .np import *
 
 from . import network
 
-from tensorflow.tools.api.generator.api.keras.utils import *
+from tensorflow.contrib.keras.api.keras.utils import *

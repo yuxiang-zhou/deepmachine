@@ -1,2 +1,2 @@
 from .base import *
-from tensorflow.tools.api.generator.api.keras.callbacks import *
+from tensorflow.contrib.keras.api.keras.callbacks import *
