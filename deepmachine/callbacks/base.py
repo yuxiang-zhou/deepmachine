@@ -3,6 +3,7 @@ import tensorflow as tf
 import functools
 
 slim = tf.contrib.slim
+K = tf.keras.backend
 
 from .. import utils
 from tensorflow.python.summary import summary as tf_summary
@@ -61,7 +62,6 @@ class TBSummary(tf.keras.callbacks.TensorBoard):
 
     def set_model(self, model):
 
-        print('Setting Models ...')
         # add learning rate summary
         optimizer = model.optimizer
         tf.summary.scalar('learning_rate', optimizer.lr)
@@ -122,8 +122,8 @@ class TBSummary(tf.keras.callbacks.TensorBoard):
         logs_print = logs.copy()
 
         logs_print.update({
-            'epoch': self.model.epoch,
-            'batch': batch + 1
+            'current_epoch': self.model.epoch,
+            'current_batch': batch + 1
         })
 
         self.model.progress_bar.update(
@@ -140,8 +140,8 @@ class TBSummary(tf.keras.callbacks.TensorBoard):
         logs_print = logs.copy()
 
         logs_print.update({
-            'epoch': epoch + 1,
-            'batch': 0
+            'current_epoch': epoch + 1,
+            'current_batch': 0
         })
 
         self.model.epoch = epoch + 1
@@ -210,4 +210,24 @@ class TBSummary(tf.keras.callbacks.TensorBoard):
                 summary_value.simple_value = value.item() if hasattr(value, 'item') else value
                 summary_value.tag = name
                 self.writer.add_summary(summary, epoch)
+            
             self.writer.flush()
+
+    def on_train_begin(self, logs=None):
+        logs = logs or {}
+        self.model.epoch = 0
+        logs_print = logs.copy()
+
+        logs_print.update({
+            'current_epoch': self.model.epoch,
+            'current_batch': 0
+        })
+
+        self.model.progress_bar.update(
+            self.model.epoch * self.model.steps_per_epoch,
+            values=logs_print.items()
+        )
+
+        self.writer.reopen()
+
+        super().on_train_begin(logs)

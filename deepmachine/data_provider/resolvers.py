@@ -91,11 +91,17 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
 
     return image
 
-def heatmap_resolver_pose(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
+def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), n_lms=16, flip_transformation=None):
+    if flip_transformation is None:
+        flip_transformation = list(range(n_lms))
+
     # load features
     n_landmarks = tf.to_int32(features['n_landmarks'])
     gt_lms = tf.decode_raw(features['gt'], tf.float32)
-    visible = tf.to_int32(tf.decode_raw(features['visible'], tf.int64))
+    if 'visible' in features:
+        visible = tf.to_int32(tf.decode_raw(features['visible'], tf.int64))
+    else:
+        visible = tf.range(n_landmarks)
     image_height = tf.to_int32(features['height'])
     image_width = tf.to_int32(features['width'])
 
@@ -123,7 +129,7 @@ def heatmap_resolver_pose(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
 
         # flip
         def flip(gt_heatmap=gt_heatmap):
-            idx = [5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10]
+            idx = flip_transformation
             gt_heatmap = tf.transpose(
                 tf.gather(tf.transpose(gt_heatmap, [2, 0, 1]), idx),
                 [1, 2, 0]
@@ -135,7 +141,7 @@ def heatmap_resolver_pose(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
             gt_heatmap = tf.image.flip_left_right(gt_heatmap)
 
             flip_hm_list = []
-            for idx in [5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10]:
+            for idx in flip_transformation:
                 flip_hm_list.append(gt_heatmap[:, :, idx])
 
             gt_heatmap = tf.stack(flip_hm_list, axis=2)
@@ -164,87 +170,22 @@ def heatmap_resolver_pose(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
         gt_heatmap, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    gt_heatmap.set_shape([256, 256, 16])
+    gt_heatmap.set_shape([256, 256, n_lms])
 
     return gt_heatmap
 
 
-def heatmap_resolver_face(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
-    # load features
-    n_landmarks = tf.to_int32(features['n_landmarks'])
-    gt_lms = tf.decode_raw(features['gt'], tf.float32)
-    visible = tf.to_int32(tf.decode_raw(features['visible'], tf.int64))
-    image_height = tf.to_int32(features['height'])
-    image_width = tf.to_int32(features['width'])
+heatmap_resolver_pose_16 = functools.partial(
+    heatmap_resolver, 
+    n_lms=16, 
+    flip_transformation=[5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10]
+)
 
-    # formation
-    gt_lms = tf.reshape(gt_lms, (n_landmarks, 2))
-    gt_heatmap = utils.tf_lms_to_heatmap(
-        gt_lms, image_height, image_width, n_landmarks, visible)
-    gt_heatmap = tf.transpose(gt_heatmap, perm=[1, 2, 0])
 
-    # augmentation
-    if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, *_ = tf.unstack(aug_args)
-
-        # scale
-        image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
-        image_width = tf.to_int32(tf.to_float(image_width) * do_scale)
-
-        gt_heatmap = tf.image.resize_images(
-            gt_heatmap,
-            tf.stack([image_height, image_width]),
-            method=ResizeMethod.BILINEAR)
-
-        # rotate
-        gt_heatmap = tf.contrib.image.rotate(gt_heatmap, do_rotate)
-
-        # flip
-        def flip(gt_heatmap=gt_heatmap):
-            idx = [5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10]
-            gt_heatmap = tf.transpose(
-                tf.gather(tf.transpose(gt_heatmap, [2, 0, 1]), idx),
-                [1, 2, 0]
-            )
-
-            return gt_heatmap
-
-        def flip_fn(gt_heatmap=gt_heatmap):
-            gt_heatmap = tf.image.flip_left_right(gt_heatmap)
-
-            flip_hm_list = []
-            for idx in [5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10]:
-                flip_hm_list.append(gt_heatmap[:, :, idx])
-
-            gt_heatmap = tf.stack(flip_hm_list, axis=2)
-
-            return gt_heatmap
-
-        gt_heatmap = tf.cond(
-            do_flip > 0.5,
-            flip_fn,
-            lambda: gt_heatmap
-        )
-    else:
-        h_aug_offset = 0
-        w_aug_offset = 0
-
-    # crop to 256 * 256
-    target_h = tf.to_int32(256)
-    target_w = tf.to_int32(256)
-    offset_h = tf.to_int32((image_height - target_h) / 2)
-    offset_w = tf.to_int32((image_width - target_w) / 2)
-
-    offset_h = offset_h + tf.to_int32(tf.to_float(offset_h) * h_aug_offset)
-    offset_w = offset_w + tf.to_int32(tf.to_float(offset_w) * w_aug_offset)
-
-    gt_heatmap = tf.image.crop_to_bounding_box(
-        gt_heatmap, offset_h, offset_w, target_h, target_w)
-
-    # shape defination
-    gt_heatmap.set_shape([256, 256, 68])
-
-    return gt_heatmap
+heatmap_resolver_face = functools.partial(
+    heatmap_resolver, 
+    n_lms=68
+)
 
 
 def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
@@ -334,58 +275,6 @@ def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
 
     # shape defination
     iuv.set_shape([256, 256, n_parts * 3])
-
-    return iuv
-
-
-def iuv_resolver_face(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
-    # load features
-    iuv = tf.image.decode_jpeg(features['iuv'], channels=3)
-    iuv_height = tf.to_int32(features['iuv_height'])
-    iuv_width = tf.to_int32(features['iuv_width'])
-
-    # formation
-    iuv = tf.reshape(iuv, (iuv_height, iuv_width, 3))
-    iuv = tf.to_float(iuv) / 255.
-
-    # augmentation
-
-    if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, *_ = tf.unstack(aug_args)
-
-        # scale
-        iuv_height = tf.to_int32(tf.to_float(iuv_height) * do_scale)
-        iuv_width = tf.to_int32(tf.to_float(iuv_width) * do_scale)
-
-        iuv = tf.image.resize_images(
-            iuv,
-            tf.stack([iuv_height, iuv_width]),
-            method=ResizeMethod.NEAREST_NEIGHBOR
-        )
-
-        # rotate
-        iuv = tf.contrib.image.rotate(iuv, do_rotate)
-
-    else:
-        h_aug_offset = 0
-        w_aug_offset = 0
-
-    # crop to 256 * 256
-    target_h = tf.to_int32(256)
-    target_w = tf.to_int32(256)
-    offset_h = tf.to_int32((iuv_height - target_h) / 2)
-    offset_w = tf.to_int32((iuv_width - target_w) / 2)
-
-    offset_h = offset_h + tf.to_int32(tf.to_float(offset_h) * h_aug_offset)
-    offset_w = offset_w + tf.to_int32(tf.to_float(offset_w) * w_aug_offset)
-
-    iuv = tf.image.crop_to_bounding_box(
-        iuv, offset_h, offset_w, target_h, target_w)
-
-    iuv = iuv[..., 1:]
-
-    # shape defination
-    iuv.set_shape([256, 256, 2])
 
     return iuv
 
@@ -803,7 +692,7 @@ ResolverImage = {
 
 ResolverHMPose = {
     'inputs': image_resolver,
-    'heatmap': heatmap_resolver_pose,
+    'heatmap': heatmap_resolver_pose_16,
 }
 
 ResolverBBoxPose = {
@@ -813,7 +702,7 @@ ResolverBBoxPose = {
 
 ResolverIUVHM = {
     'inputs': image_resolver,
-    'heatmap': heatmap_resolver_pose,
+    'heatmap': heatmap_resolver_pose_16,
     'iuv': iuv_resolver
 }
 
@@ -830,5 +719,5 @@ ResolverHMFace = {
 ResolverIUVFace = {
     'inputs': image_resolver,
     'heatmap': heatmap_resolver_face,
-    'uv': iuv_resolver_face
+    'uv': iuv_resolver
 }

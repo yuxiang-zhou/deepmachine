@@ -2,6 +2,7 @@ import numpy as np
 import menpo.io as mio
 import scipy.io as sio
 from io import BytesIO
+from menpo.shape import PointCloud
 
 import tensorflow as tf
 
@@ -53,19 +54,30 @@ def relative_landmark_builder(data):
     }
 
 
-def landmark_builder(data):
-    visible_pts = data['visible_pts']
-    marked_index = data['marked_index']
-    image = data['image']
-
-    landmarks = image.landmarks['JOINT'].points
-    return {
+def landmark_builder(data, visible_label=None, marked_label=None):
+    
+    landmarks = data['landmark']
+    if isinstance(landmarks, PointCloud):
+        landmarks = landmarks.points
+        
+    results = {
         'n_landmarks': _int_feauture(landmarks.shape[0]),
         'gt': _bytes_feauture(landmarks.astype(np.float32).tobytes()),
-        'visible': _bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
-        'marked': _bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
     }
 
+    if visible_label:
+        visible_pts = data[visible_label]
+        results.update({
+            'visible': _bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
+        })
+
+    if marked_label:
+        marked_index = data[marked_label]
+        results.update({
+            'marked': _bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
+        })
+
+    return results
 
 def iuv_builder(data):
     image = data['iuv']

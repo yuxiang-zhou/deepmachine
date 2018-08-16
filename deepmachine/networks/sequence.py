@@ -3,29 +3,53 @@ import numpy as np
 from .. import layers
 
 
-def conv2d(inputs, *args, batch_norm=None, use_coordconv=False, **kwargs):
+def conv2d(inputs, *args, batch_norm=None, dropout=None, use_coordconv=False, activation=True, **kwargs):
     net = inputs
     
+    # pad coordinate
     if use_coordconv:
         net = layers.CoordinateChannel2D()(net)
     
+    # convolution layer
     net = layers.Conv2D(*args, **kwargs)(net)
+
+    # batch normalization
     if batch_norm:
         net = layers.BatchNormalization()(net)
-    net = layers.LeakyReLU()(net)
+
+    # rectifier
+    if activation:
+        if type(activation) is str:
+            net = layers.Activation(activation)(net)
+        else:
+            net = layers.LeakyReLU()(net)
+
+    # dropout layer
+    if dropout:
+        net = layers.Dropout(dropout)(net)
         
     return net
     
-def conv2dt(inputs, *args, batch_norm=None, use_coordconv=False, **kwargs):
+def conv2dt(inputs, *args, batch_norm=None, use_coordconv=False, dropout=False, **kwargs):
     net = inputs
     
+    # pad coordinate
     if use_coordconv:
         net = layers.CoordinateChannel2D()(net)
 
+    # deconvolution layer
     net = layers.Conv2DTranspose(*args, **kwargs)(net)
+
+    # batch normalization
     if batch_norm:
         net = layers.BatchNormalization()(net)
+
+    # rectifier
     net = layers.LeakyReLU()(net)
+
+    # dropout layer
+    if dropout:
+        net = layers.Dropout(dropout)(net)
     return net
 
 
@@ -165,6 +189,7 @@ def Decoder2D(inputs, out_shape, depth=2, conv_channel=32, kernel_initializer='g
         kernel_initializer=kernel_initializer, **kwargs)
     
     net = conv2d(
+        net,
         out_shape[-1], (3, 3),
         strides=1,
         padding='same',

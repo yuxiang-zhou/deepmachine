@@ -4,10 +4,12 @@ from . import callbacks
 from . import utils
 from . import layers
 from . import losses
+from . import engine
 
 model_from_config = tf.keras.models.model_from_config
 model_from_json = tf.keras.models.model_from_json
 model_from_yaml = tf.keras.models.model_from_yaml
+activations = tf.keras.activations
 save_model = tf.keras.models.save_model
 K = tf.keras.backend
 
@@ -58,6 +60,7 @@ class DeepMachine(tf.keras.Model):
                 kwargs['outputs'] = [kwargs['outputs']]
 
         self.ckpt_path = ckpt_path
+        self.callbacks = None
         if ckpt_path:
             self.default_cbs = [
                 callbacks.TBSummary(
@@ -71,14 +74,15 @@ class DeepMachine(tf.keras.Model):
 
         super().__init__(*args, **kwargs)
 
-    def _fitting_args_check(self, *args, summaries=None, **kwargs):
+    def prepare_training(self, *args, summaries=None, use_default_callbacks=True, **kwargs):
         # appending default callbacks
         if 'callbacks' not in kwargs or kwargs['callbacks'] is None:
             kwargs['callbacks'] = []
-        kwargs['callbacks'] += self.default_cbs
+        if use_default_callbacks:
+            kwargs['callbacks'] += self.default_cbs
 
         self.progress_bar = None
-        self.epoch = 0
+        self.epoch =  0 if 'initial_epoch' not in kwargs else kwargs['initial_epoch']
         self.summaries = summaries
 
         if len(args) > 0 and isinstance(args[0], tf.keras.utils.Sequence):
@@ -104,15 +108,15 @@ class DeepMachine(tf.keras.Model):
 
     def fit_generator(self, *args, **kwargs):
 
-        args, kwargs = self._fitting_args_check(*args, **kwargs)
+        args, kwargs = self.prepare_training(*args, **kwargs)
 
-        trained_model = super().fit_generator(*args, **kwargs)
+        history = engine.training.fit_generator(self, *args, **kwargs)
 
-        return trained_model
+        return history
 
     def fit(self, *args, **kwargs):
 
-        args, kwargs = self._fitting_args_check(*args, **kwargs)
+        args, kwargs = self.prepare_training(*args, **kwargs)
 
         # start training
         training_using_queue_runner = len(
@@ -124,11 +128,11 @@ class DeepMachine(tf.keras.Model):
             threads = tf.train.start_queue_runners(sess, coord)
 
         # training
-        trained_model = super().fit(*args, **kwargs)
+        history = super().fit(*args, **kwargs)
 
         # Clean up the TF session.
         if training_using_queue_runner:
             coord.request_stop()
             coord.join(threads)
 
-        return trained_model
+        return history

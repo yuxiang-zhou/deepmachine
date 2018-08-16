@@ -13,6 +13,40 @@ from menpo.image import Image
 from menpo.shape import PointCloud, TriMesh, ColouredTriMesh
 from menpo.transform import Translation, Scale
 
+def union_dict(dicts):
+    udict = {}
+    for d in dicts:
+        udict.update(d)
+    return udict
+
+
+def fill_hole_row(r):
+    p_s = p_e = 0
+    while p_e < len(r) and p_s < len(r):
+        if r[p_s] == 0 and r[p_e] > 0 or p_e + 1 == len(r):
+            start = r[p_s-1] if p_s > 0 else 0
+            end = r[p_e] if r[p_e] > 0 else start
+            r[p_s:p_e] = np.linspace(start, end, p_e-p_s)
+            p_s = p_e = p_e + 1
+        else:
+            if r[p_e] == 0:
+                p_e += 1
+                
+            if r[p_s] > 0:
+                p_s += 1
+                p_e = p_s
+
+
+def fill_hole(img):
+    img_hf = img.copy()
+    for r in img_hf:
+        fill_hole_row(r)
+
+    for r in img_hf.T:
+        fill_hole_row(r)
+        
+    return img_hf
+
 
 def rotation_matrix(angle, direction, point=None):
     sina = math.sin(angle)
