@@ -12,11 +12,9 @@ from menpo.shape import PointCloud
 from menpo.transform import Translation
 
 import sys
+from .. import utils
 
-from ..flags import FLAGS
-from ..utils import tf_lms_to_heatmap, tf_rotate_points
-from .base import *
-
+ResizeMethod = tf.image.ResizeMethod
 slim = tf.contrib.slim
 
 
@@ -26,16 +24,18 @@ def dummy_resolver(_, *args, **kwargs):
 
     return dummy
 
+
 def dummy_seq_resolver(features, *args, **kwargs):
     frames = features['frames'].values
     n_data = tf.shape(frames)[0]
     window_size = 3
-    
+
     dummy = tf.constant(np.random.sample([1]).astype(np.float32))
-    dummy_sequences = tf.map_fn(lambda x:dummy, tf.range(n_data - window_size + 1), dtype=tf.float32)
-    
+    dummy_sequences = tf.map_fn(lambda x: dummy, tf.range(
+        n_data - window_size + 1), dtype=tf.float32)
 
     return dummy_sequences
+
 
 def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
     # load features
@@ -49,7 +49,8 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, *_ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
+            _ = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -75,7 +76,7 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
         w_aug_offset = 0
 
     # crop to 256 * 256
-    target_h = tf.to_int32(256) 
+    target_h = tf.to_int32(256)
     target_w = tf.to_int32(256)
     offset_h = tf.to_int32((image_height - target_h) / 2)
     offset_w = tf.to_int32((image_width - target_w) / 2)
@@ -90,6 +91,7 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
     image.set_shape([256, 256, 3])
 
     return image
+
 
 def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), n_lms=16, flip_transformation=None):
     if flip_transformation is None:
@@ -113,7 +115,8 @@ def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, *_ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
+            _ = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -128,15 +131,6 @@ def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
         gt_heatmap = tf.contrib.image.rotate(gt_heatmap, do_rotate)
 
         # flip
-        def flip(gt_heatmap=gt_heatmap):
-            idx = flip_transformation
-            gt_heatmap = tf.transpose(
-                tf.gather(tf.transpose(gt_heatmap, [2, 0, 1]), idx),
-                [1, 2, 0]
-            )
-
-            return gt_heatmap
-
         def flip_fn(gt_heatmap=gt_heatmap):
             gt_heatmap = tf.image.flip_left_right(gt_heatmap)
 
@@ -176,14 +170,14 @@ def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
 
 
 heatmap_resolver_pose_16 = functools.partial(
-    heatmap_resolver, 
-    n_lms=16, 
+    heatmap_resolver,
+    n_lms=16,
     flip_transformation=[5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10]
 )
 
 
 heatmap_resolver_face = functools.partial(
-    heatmap_resolver, 
+    heatmap_resolver,
     n_lms=68
 )
 
@@ -199,22 +193,17 @@ def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
     if from_image:
         iuv = tf.image.decode_jpeg(features['iuv'], channels=3)
     else:
-        iuv = tf.to_int32(tf.decode_raw(features['iuv'], dtype))
+        iuv = tf.decode_raw(features['iuv'], dtype)
 
-    # formation
-    iuv = tf.to_float(iuv)
-    iuv = tf.reshape(iuv, (iuv_height, iuv_width, 3))
+    iuv = tf.reshape(iuv, [iuv_height, iuv_width, -1])
+    iuv_mask = tf.to_int32(iuv[..., :1])
+    uv = tf.to_float(iuv[..., 1:])
 
     # one hot mask
-    iuv_mask = iuv[..., 0]
-
-    iuv_one_hot = slim.one_hot_encoding(
-        tf.to_int32(tf.reshape(iuv_mask, [-1])),
-        n_parts)
+    iuv_one_hot = tf.contrib.layers.one_hot_encoding(tf.reshape(iuv_mask, [-1]), n_parts)
     iuv_one_hot = tf.reshape(iuv_one_hot, [iuv_height, iuv_width, n_parts])
 
     # normalised uv
-    uv = iuv[..., 1:] / 255.
     u = iuv_one_hot * uv[..., 0][..., None]
     v = iuv_one_hot * uv[..., 1][..., None]
 
@@ -224,15 +213,11 @@ def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
         iuv[..., :1] - 1,
         iuv[..., 1:]], 2)
 
-    # pad iuv
-    pad_h = (image_height - iuv_height) // 2
-    pad_w = (image_width - iuv_width) // 2
-    iuv = tf.pad(iuv, [[pad_h, pad_h], [pad_w, pad_w], [0, 0]])
-
     # augmentation
 
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, *_ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
+            _ = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -256,7 +241,6 @@ def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
     else:
         h_aug_offset = 0
         w_aug_offset = 0
-
 
     iuv = tf.concat([
         iuv[..., :1] + 1,
@@ -292,7 +276,8 @@ def image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, *_ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
+            _ = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -334,12 +319,13 @@ def image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]
 
     return image
 
+
 def image_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), crop_size=321, final_size=256):
     # load features
     image = tf.image.decode_jpeg(features['image'], channels=3)
     image_height = tf.to_int32(features['height'])
     image_width = tf.to_int32(features['width'])
-    
+
     n_landmarks = tf.to_int32(features['n_landmarks'])
     visible = tf.to_int32(tf.decode_raw(features['marked'], tf.int64))
     gt_lms = tf.decode_raw(features['rlms'], tf.float32)
@@ -350,12 +336,11 @@ def image_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0
     image = tf.reshape(image, (image_height, image_width, 3))
     image = tf.to_float(image) / 255.
 
-    
     bbox = tf.concat([
         tf.reduce_min(gt_lms_v, axis=0),
         tf.reduce_max(gt_lms_v, axis=0)
     ], 0)
-    bbox = tf.reshape(bbox, [2,2])
+    bbox = tf.reshape(bbox, [2, 2])
     centre = tf.reduce_mean(bbox, axis=0)
     bbox = bbox - centre
     bbox = bbox * 1.5
@@ -363,19 +348,20 @@ def image_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0
     bbox = tf.reshape(bbox, [4])
     bbox = tf.where(bbox < 0., tf.zeros_like(bbox), bbox)
     bbox = tf.where(bbox > 1., tf.ones_like(bbox), bbox)
-    hw_ratio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1])
-    
+
     gt_lms = gt_lms - bbox[:2]
     gt_lms = gt_lms / (bbox[2:] - bbox[:2])
-    
-    image = tf.image.crop_and_resize(image[None, ...], bbox[None,...], [0], [crop_size, crop_size])[0]
+
+    image = tf.image.crop_and_resize(image[None, ...], bbox[None, ...], [
+                                     0], [crop_size, crop_size])[0]
 
     image_height = crop_size
     image_width = crop_size
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, *_ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
+            _ = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -401,7 +387,7 @@ def image_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0
         w_aug_offset = 0
 
     # crop to 256 * 256
-    target_h = tf.to_int32(256) 
+    target_h = tf.to_int32(256)
     target_w = tf.to_int32(256)
     offset_h = tf.to_int32((image_height - target_h) / 2)
     offset_w = tf.to_int32((image_width - target_w) / 2)
@@ -423,7 +409,7 @@ def heatmap_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
     image = tf.image.decode_jpeg(features['image'], channels=3)
     image_height = tf.to_int32(features['height'])
     image_width = tf.to_int32(features['width'])
-    
+
     n_landmarks = tf.to_int32(features['n_landmarks'])
     visible = tf.to_int32(tf.decode_raw(features['marked'], tf.int64))
     gt_lms = tf.decode_raw(features['rlms'], tf.float32)
@@ -438,7 +424,7 @@ def heatmap_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
         tf.reduce_min(gt_lms_v, axis=0),
         tf.reduce_max(gt_lms_v, axis=0)
     ], 0)
-    bbox = tf.reshape(bbox, [2,2])
+    bbox = tf.reshape(bbox, [2, 2])
     centre = tf.reduce_mean(bbox, axis=0)
     bbox = bbox - centre
     bbox = bbox * 1.5
@@ -446,22 +432,23 @@ def heatmap_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
     bbox = tf.reshape(bbox, [4])
     bbox = tf.where(bbox < 0., tf.zeros_like(bbox), bbox)
     bbox = tf.where(bbox > 1., tf.ones_like(bbox), bbox)
-    hw_ratio = (bbox[2] - bbox[0]) / (bbox[3] - bbox[1])
-    
+
     gt_lms = gt_lms - bbox[:2]
     gt_lms = gt_lms / (bbox[2:] - bbox[:2])
-    
-    image = tf.image.crop_and_resize(image[None, ...], bbox[None,...], [0], [crop_size, crop_size])[0]
-    gt_heatmap = utils.tf_lms_to_heatmap(gt_lms * [crop_size, crop_size], crop_size, crop_size, n_landmarks, visible, sigma=7)
+
+    image = tf.image.crop_and_resize(image[None, ...], bbox[None, ...], [
+                                     0], [crop_size, crop_size])[0]
+    gt_heatmap = utils.tf_lms_to_heatmap(
+        gt_lms * [crop_size, crop_size], crop_size, crop_size, n_landmarks, visible, sigma=7)
     gt_heatmap = tf.transpose(gt_heatmap, perm=[1, 2, 0])
-    
+
     image_height = crop_size
     image_width = crop_size
-    
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, *_ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
+            _ = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -476,15 +463,6 @@ def heatmap_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
         gt_heatmap = tf.contrib.image.rotate(gt_heatmap, do_rotate)
 
         # flip
-        def flip(gt_heatmap=gt_heatmap):
-            idx = [5, 4, 3, 2, 1, 0, 6, 7, 8, 9, 15, 14, 13, 12, 11, 10]
-            gt_heatmap = tf.transpose(
-                tf.gather(tf.transpose(gt_heatmap, [2, 0, 1]), idx),
-                [1, 2, 0]
-            )
-
-            return gt_heatmap
-
         def flip_fn(gt_heatmap=gt_heatmap):
             gt_heatmap = tf.image.flip_left_right(gt_heatmap)
 
@@ -523,12 +501,8 @@ def heatmap_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
     return gt_heatmap
 
 
-
 def cyclegan_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1])):
     image = tf.image.decode_jpeg(content)
-    
-    image_height = tf.shape(image)[0]
-    image_width = tf.shape(image)[1]
     image_channels = tf.shape(image)[2]
 
     image = tf.cond(image_channels > 1,
@@ -548,9 +522,9 @@ def cyclegan_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0,
 
 
 def paired_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1])):
-    
+
     image = tf.image.decode_jpeg(content)
-    
+
     image_height = tf.shape(image)[0]
     image_width = tf.shape(image)[1]
     image_channels = tf.shape(image)[2]
@@ -558,17 +532,16 @@ def paired_image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1
     image = tf.cond(image_channels > 1,
                     lambda: image,
                     lambda: tf.image.grayscale_to_rgb(image))
-    
+
     image_channels = 3
-    
+
     image = tf.reshape(
         tf.transpose(
             tf.reshape(
                 image, [image_height, 2, image_width // 2, image_channels]
-            ), [0,2,1,3]
-        ), [image_height,image_width // 2,image_channels * 2])
+            ), [0, 2, 1, 3]
+        ), [image_height, image_width // 2, image_channels * 2])
 
-    
     image = tf.to_float(image) / 255. * 2. - 1.
 
     # augmentation
@@ -587,14 +560,17 @@ def paired_seq_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0
     drawings = features['drawings'].values
     n_data = tf.shape(frames)[0]
     sliding_window = 3
-    
+
     # formating
-    frames = tf.to_float(tf.map_fn(tf.image.decode_jpeg, frames, dtype=tf.uint8)) / 255.
-    drawings = 1 - tf.to_float(tf.map_fn(tf.image.decode_jpeg, drawings, dtype=tf.uint8)) / 255.
+    frames = tf.to_float(tf.map_fn(tf.image.decode_jpeg,
+                                   frames, dtype=tf.uint8)) / 255.
+    drawings = 1 - \
+        tf.to_float(tf.map_fn(tf.image.decode_jpeg,
+                              drawings, dtype=tf.uint8)) / 255.
     paired_squence = tf.concat([frames, drawings], -1)
     image_height = tf.shape(frames)[1]
     image_width = tf.shape(frames)[2]
-    
+
     # centre crop 256
     target_h = tf.to_int32(256)
     target_w = tf.to_int32(256)
@@ -603,15 +579,16 @@ def paired_seq_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0
 
     paired_squence = tf.image.crop_to_bounding_box(
         paired_squence, offset_h, offset_w, target_h, target_w)
-    
+
     # build sliding window
 
     range_indexes = tf.range(0, n_data - sliding_window + 1)
-    sequences = tf.map_fn(lambda x:paired_squence[x:x+sliding_window], range_indexes, dtype=tf.float32)
+    sequences = tf.map_fn(
+        lambda x: paired_squence[x:x+sliding_window], range_indexes, dtype=tf.float32)
     sequences = sequences * 2 - 1
-    
+
     sequences.set_shape([None, sliding_window, None, None, 6])
-    
+
     return sequences
 
 
@@ -621,19 +598,23 @@ def paired_masked_seq_resolver(features, aug=False, aug_args=tf.constant([0, 0, 
     masks = features['masks']
     n_data = tf.shape(frames)[0]
     sliding_window = 3
-    
+
     # formating
-    frames = tf.to_float(tf.map_fn(tf.image.decode_jpeg, frames, dtype=tf.uint8)) / 255.
-    drawings = 1 - tf.to_float(tf.map_fn(tf.image.decode_jpeg, drawings, dtype=tf.uint8)) / 255.
-    masks = tf.reshape(tf.to_float(tf.decode_raw(masks, tf.uint8)), [n_data, 384, 384, 3])
+    frames = tf.to_float(tf.map_fn(tf.image.decode_jpeg,
+                                   frames, dtype=tf.uint8)) / 255.
+    drawings = 1 - \
+        tf.to_float(tf.map_fn(tf.image.decode_jpeg,
+                              drawings, dtype=tf.uint8)) / 255.
+    masks = tf.reshape(tf.to_float(tf.decode_raw(
+        masks, tf.uint8)), [n_data, 384, 384, 3])
     masks = (masks + 1.) / 2.
-    
+
     image_height = tf.shape(frames)[1]
     image_width = tf.shape(frames)[2]
-    
+
     # merge by channels
     paired_squence = tf.concat([frames, drawings, masks], -1)
-    
+
     # centre crop 256
     target_h = tf.to_int32(256)
     target_w = tf.to_int32(256)
@@ -642,15 +623,16 @@ def paired_masked_seq_resolver(features, aug=False, aug_args=tf.constant([0, 0, 
 
     paired_squence = tf.image.crop_to_bounding_box(
         paired_squence, offset_h, offset_w, target_h, target_w)
-    
+
     # build sliding window
 
     range_indexes = tf.range(0, n_data - sliding_window + 1)
-    sequences = tf.map_fn(lambda x:paired_squence[x:x+sliding_window], range_indexes, dtype=tf.float32)
+    sequences = tf.map_fn(
+        lambda x: paired_squence[x:x+sliding_window], range_indexes, dtype=tf.float32)
     sequences = sequences * 2 - 1
-    
+
     sequences.set_shape([None, sliding_window, None, None, 9])
-    
+
     return sequences
 
 

@@ -83,7 +83,7 @@ def iuv_builder(data):
     image = data['iuv']
 
     return {
-        'iuv': _bytes_feauture(image.pixels_with_channels_at_back().astype(np.uint8).tobytes()),
+        'iuv': _bytes_feauture(image.pixels_with_channels_at_back().astype(np.float32).tobytes()),
         'iuv_height': _int_feauture(image.shape[0]),
         'iuv_width': _int_feauture(image.shape[1])
     }

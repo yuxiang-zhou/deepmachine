@@ -1,21 +1,19 @@
 import tensorflow as tf
 import numpy as np
+from functools import partial
 from .. import layers
 
 
-def conv2d(inputs, *args, batch_norm=None, dropout=None, use_coordconv=False, activation=True, **kwargs):
-    net = inputs
-    
-    # pad coordinate
-    if use_coordconv:
-        net = layers.CoordinateChannel2D()(net)
-    
-    # convolution layer
-    net = layers.Conv2D(*args, **kwargs)(net)
+def _conv(inputs, conv_layer, *args, batch_norm=None, dropout=None, pre_conv=None, activation=True, **kwargs):
 
-    # batch normalization
-    if batch_norm:
-        net = layers.BatchNormalization()(net)
+    net = inputs
+
+    # pad coordinate
+    if pre_conv:
+        net = pre_conv()(net)
+
+    # convolution layer
+    net = conv_layer(*args, **kwargs)(net)
 
     # rectifier
     if activation:
@@ -24,33 +22,41 @@ def conv2d(inputs, *args, batch_norm=None, dropout=None, use_coordconv=False, ac
         else:
             net = layers.LeakyReLU()(net)
 
-    # dropout layer
-    if dropout:
-        net = layers.Dropout(dropout)(net)
-        
-    return net
-    
-def conv2dt(inputs, *args, batch_norm=None, use_coordconv=False, dropout=False, **kwargs):
-    net = inputs
-    
-    # pad coordinate
-    if use_coordconv:
-        net = layers.CoordinateChannel2D()(net)
-
-    # deconvolution layer
-    net = layers.Conv2DTranspose(*args, **kwargs)(net)
-
     # batch normalization
     if batch_norm:
-        net = layers.BatchNormalization()(net)
-
-    # rectifier
-    net = layers.LeakyReLU()(net)
+        if type(batch_norm) is str:
+            net = getattr(layers, batch_norm)()(net)
+        else:
+            net = layers.BatchNormalization()(net)
 
     # dropout layer
     if dropout:
         net = layers.Dropout(dropout)(net)
+
     return net
+
+
+def conv2d(inputs, *args, use_coordconv=False, **kwargs):
+
+    if use_coordconv:
+        kwargs['pre_conv'] = layers.CoordinateChannel2D
+
+    return _conv(inputs, layers.Conv2D, *args, **kwargs)
+
+
+def deconv2d(inputs, *args, use_coordconv=False, size=2, **kwargs):
+
+    kwargs['pre_conv'] = partial(layers.UpSampling2D, size=size)
+
+    return _conv(inputs, layers.Conv2D, *args, **kwargs)
+
+
+def conv2dt(inputs, *args, batch_norm=None, use_coordconv=False, dropout=False, **kwargs):
+
+    if use_coordconv:
+        kwargs['pre_conv'] = layers.CoordinateChannel2D
+
+    return _conv(inputs, layers.Conv2DTranspose, *args, **kwargs)
 
 
 def ResiduleModule(inputs, out_channel, add_residule=False, kernel_initializer='glorot_uniform', **kwargs):
@@ -75,23 +81,26 @@ def ResiduleModule(inputs, out_channel, add_residule=False, kernel_initializer='
     return net
 
 
-def Encoding2D(inputs, out_channel, down_sample=True, module='Residule', kernel_initializer='glorot_uniform', **kwargs):
+def Encoding2D(inputs, out_channel, down_sample=True, module='Residule', add_residule=True, kernel_initializer='glorot_uniform', **kwargs):
     module_fn = globals()['%sModule' % module] if type(
         module) is str else module
 
     net = module_fn(inputs, out_channel,
-                    kernel_initializer=kernel_initializer, **kwargs)
+                    kernel_initializer=kernel_initializer,
+                    add_residule=True,
+                    **kwargs)
 
     if down_sample:
-        net = layers.MaxPool2D(pool_size=2)(net)
+        net = conv2d(net, out_channel, 3, strides=2, padding='same',
+                     kernel_initializer=kernel_initializer, **kwargs)
 
     return net
 
 
 def Decoding2D(inputs, out_channel, kernel_initializer='glorot_uniform', **kwargs):
-    net = conv2dt(
+    net = deconv2d(
         inputs,
-        out_channel, (3, 3), strides=2,
+        out_channel, (3, 3),
         padding='same',
         kernel_initializer=kernel_initializer, **kwargs)
 
@@ -106,7 +115,11 @@ def Hourglass(inputs, output_shape, depth=4, initial_channel=32, module='Residul
         initial_channel, (7, 7),
         strides=2,
         padding='same',
-        kernel_initializer=kernel_initializer, **kwargs)
+        batch_norm=None,
+        activation=True,
+        dropout=None,
+        use_coordconv=kwargs['use_coordconv'] or False,
+        kernel_initializer=kernel_initializer)
     net = layers.MaxPool2D(pool_size=2)(net)
     # Down sampling
     skip_layers = []
@@ -126,16 +139,21 @@ def Hourglass(inputs, output_shape, depth=4, initial_channel=32, module='Residul
         net = layers.Concatenate()([net, s_layer])
 
     # output regress
-    net = conv2dt(
+    net = deconv2d(
         net,
-        initial_channel * (depth-s), (7, 7), strides=4,
+        initial_channel * (depth-s),
+        kernel_size=3,
+        size=4,
         padding='same',
         kernel_initializer=kernel_initializer, **kwargs)
 
-    prediction = layers.Conv2D(
-        output_shape[-1], (3, 3),
+    prediction = conv2d(
+        net,
+        output_shape[-1],
+        kernel_size=3,
         padding='same',
-        kernel_initializer=kernel_initializer)(net)
+        activation=None,
+        kernel_initializer=kernel_initializer)
 
     return prediction
 
@@ -152,7 +170,8 @@ def Encoder2D(inputs, embedding, depth=2, conv_channel=32, kernel_initializer='g
 
         net = Encoding2D(net, conv_channel * (s+2), **kwargs)
 
-    net = Encoding2D(net, conv_channel * (depth+1), down_sample=False, **kwargs)
+    net = Encoding2D(net, conv_channel * (depth+1),
+                     down_sample=False, **kwargs)
 
     net = layers.Flatten()(net)
     net = layers.Dense(embedding)(net)
@@ -187,7 +206,7 @@ def Decoder2D(inputs, out_shape, depth=2, conv_channel=32, kernel_initializer='g
         strides=1,
         padding='same',
         kernel_initializer=kernel_initializer, **kwargs)
-    
+
     net = conv2d(
         net,
         out_shape[-1], (3, 3),

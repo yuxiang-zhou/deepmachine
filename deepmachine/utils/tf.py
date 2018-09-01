@@ -1,10 +1,12 @@
+import keras
 import tensorflow as tf
 import numpy as np
 import menpo.io as mio
 import menpo
 from scipy.interpolate import interp1d
 import scipy as sp
-
+from keras import backend as K
+from matplotlib import pyplot as plt
 from pathlib import Path
 from scipy.io import loadmat
 from menpo.image import Image
@@ -14,10 +16,10 @@ from menpo.transform import Translation, Scale
 from .np import sample_colours_from_colourmap
 
 slim = tf.contrib.slim
-
 ResizeMethod = tf.image.ResizeMethod
 
-### tf functions
+# tf functions
+
 
 def tf_caffe_preprocess(image):
     VGG_MEAN = np.array([102.9801, 115.9465, 122.7717])
@@ -186,7 +188,8 @@ def tf_atan2(y, x):
 
 
 def tf_n_channel_rgb(inputs, n_feature, colour_set='jet'):
-    cm = sample_colours_from_colourmap(n_feature, colour_set).astype(np.float32)
+    cm = sample_colours_from_colourmap(
+        n_feature, colour_set).astype(np.float32)
     tf_cm = tf.constant(cm)
     tf_img = tf.tensordot(inputs, tf_cm, axes=1)
 
@@ -194,17 +197,39 @@ def tf_n_channel_rgb(inputs, n_feature, colour_set='jet'):
 
 
 def tf_iuv_rgb(tf_iuv, n_feature=26, colour_set='jet'):
-   
-    tf_iuv_class = tf_iuv[...,:n_feature]
+
+    tf_iuv_class = tf_iuv[..., :n_feature]
     tf_iuv_class = tf.argmax(tf_iuv_class, axis=-1)
     tf_iuv_class = tf.one_hot(tf_iuv_class, n_feature)
-    
-    tf_u = tf_iuv_class * tf_iuv[...,n_feature:n_feature*2]
-    tf_v = tf_iuv_class * tf_iuv[...,n_feature*2:]
-    
+
+    tf_u = tf_iuv_class * tf_iuv[..., n_feature:n_feature*2]
+    tf_v = tf_iuv_class * tf_iuv[..., n_feature*2:]
+
     tf_u = tf_n_channel_rgb(tf_u, n_feature)
     tf_v = tf_n_channel_rgb(tf_v, n_feature)
-    
+
     tf_img = (tf_u + tf_v) / 2. / 255.
 
     return tf_img
+
+
+def tf_ced_accuracy(t, dists):
+    # Head	 Shoulder	Elbow	Wrist	Hip	   Knee	   Ankle
+    pts_r = tf.transpose(
+        tf.gather(tf.transpose(dists), [8, 12, 11, 10, 2, 1, 0]))
+    pts_l = tf.transpose(
+        tf.gather(tf.transpose(dists), [9, 13, 14, 15, 3, 4, 5]))
+    part_pckh = (tf.to_int32(pts_r <= t) + tf.to_int32(pts_l <= t)) / 2
+
+    return tf.concat([part_pckh, tf.reduce_sum(tf.to_int32(dists <= t), 1)[..., None] / tf.shape(dists)[1]], 1)
+
+
+def tf_normalized_point_to_point_error(preds, gts, factor=1):
+    dists = tf.sqrt(tf.reduce_sum(tf.pow(preds - gts, 2),
+                                  reduction_indices=-1)) / factor
+    return dists
+
+def tf_pckh(preds, gts, scales):
+    t_range = np.arange(0, 0.51, 0.01)
+    dists = tf_normalized_point_to_point_error(preds, gts, factor=scales)
+    return tf_ced_accuracy(0.5, dists)

@@ -1,228 +1,193 @@
 import numpy as np
+import time
+import datetime
+import keras
 
-from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.utils.data_utils import GeneratorEnqueuer
-from tensorflow.python.keras.utils.data_utils import OrderedEnqueuer
-from tensorflow.python.keras.utils.data_utils import Sequence
-from tensorflow.python.keras.utils.generic_utils import Progbar
-from tensorflow.python.platform import tf_logging as logging
+from collections import OrderedDict
+from menpo.visualize import print_dynamic
+from .. import callbacks as cbks
+from keras import backend as K
+
+from ..utils import Summary, channels_to_rgb, max_epoch
 
 
-def fit_generator(model,
-                  generator,
-                  steps_per_epoch=None,
-                  epochs=1,
-                  verbose=1,
-                  callbacks=None,
-                  validation_data=None,
-                  validation_steps=None,
-                  class_weight=None,
-                  max_queue_size=10,
-                  workers=1,
-                  use_multiprocessing=False,
-                  shuffle=True,
-                  initial_epoch=0):
-    """See docstring for `Model.fit_generator`."""
-    wait_time = 0.01  # in seconds
-    epoch = initial_epoch
+def _base_image_summary_op(train_x, train_y, predicts):
+    image_summary = {}
+    image_summary.update({'inputs/image_%d' % i: imgs
+                          for i, imgs in enumerate(train_x)})
+    image_summary.update({'target/image_%d' % i: imgs
+                          for i, imgs in enumerate(train_y)})
+    image_summary.update({'output/image_%d' % i: imgs
+                          for i, imgs in enumerate(predicts)})
 
-    do_validation = bool(validation_data)
+    return image_summary
 
-    is_sequence = isinstance(generator, Sequence)
-    if not is_sequence and use_multiprocessing and workers > 1:
-        logging.warning(
-            UserWarning('Using a generator with `use_multiprocessing=True`'
-                        ' and multiple workers may duplicate your data.'
-                        ' Please consider using the`keras.utils.Sequence'
-                        ' class.'))
-    if steps_per_epoch is None:
-        if is_sequence:
-            steps_per_epoch = len(generator)
-        else:
-            raise ValueError('`steps_per_epoch=None` is only valid for a'
-                             ' generator based on the `keras.utils.Sequence`'
-                             ' class. Please specify `steps_per_epoch` or use'
-                             ' the `keras.utils.Sequence` class.')
 
-    # python 2 has 'next', 3 has '__next__'
-    # avoid any explicit version checks
-    val_gen = (
-        hasattr(validation_data, 'next') or
-        hasattr(validation_data, '__next__') or
-        isinstance(validation_data, Sequence))
-    if (val_gen and not isinstance(validation_data, Sequence) and
-            not validation_steps):
-        raise ValueError('`validation_steps=None` is only valid for a'
-                         ' generator based on the `keras.utils.Sequence`'
-                         ' class. Please specify `validation_steps` or use'
-                         ' the `keras.utils.Sequence` class.')
+def _train_op(model, data, adapter, i_epoch, i_batch, epoch_end, image_summary_ops=[], training_history=[], **kwargs):
+    train_x, train_y = adapter(data, i_epoch, i_batch, epoch_end)
+    # ----------------------
+    #  Train
+    # ----------------------
+    losses = model.train_on_batch(train_x, train_y)
 
-    # Prepare display labels.
-    out_labels = model.metrics_names
-    callback_metrics = out_labels + ['val_%s' % n for n in out_labels]
+    if type(losses) is not list:
+        losses = [losses]
 
-    # it's possible to callback a different model than self:
-    if hasattr(model, 'callback_model') and model.callback_model:
-        callback_model = model.callback_model
-    else:
-        callback_model = model
+    # prepare summaries
+    scarlar_summary = {
+        "losses/total_loss": losses[0]
+    }
+    scarlar_summary.update(
+        {"losses/loss_%d" % i: l for i, l in enumerate(losses[1:])})
+    scarlar_summary.update(
+        {"learning_rate": model.optimizer.lr.eval(K.get_session())})
 
-    # prepare callbacks
-    if hasattr(model, 'callbacks') and model.callbacks:
-        callbacks = model.callbacks
-    else:
-        model.history = cbks.History()
-        callbacks = [cbks.BaseLogger()] + (callbacks or []) + [model.history]
+    summary = Summary(scarlar_summary)
+    
+    if epoch_end:
+        predicts = model.predict(train_x)
+
+        for img_op in image_summary_ops:
+            image_summary = img_op(train_x, train_y, predicts)
+
+            summary.update_images(image_summary)
+
+    return summary
+
+
+def _valid_op(model, data, adapter, i_epoch, i_batch, epoch_end, image_summary_ops=[], training_history=[], **kwargs):
+    valid_x, valid_y = adapter(data, i_epoch, i_batch, epoch_end)
+    # ----------------------
+    #  Validate
+    # ----------------------
+    # pred_y = model.predict(valid_x, valid_y)
+
+    # if type(losses) is not list:
+    #     losses = [losses]
+
+    # # prepare summaries
+    # scarlar_summary = {
+    #     "losses/total_loss": losses[0]
+    # }
+    # scarlar_summary.update(
+    #     {"losses/loss_%d" % i: l for i, l in enumerate(losses[1:])})
+    # scarlar_summary.update(
+    #     {"learning_rate": model.optimizer.lr.eval(K.get_session())})
+
+    # summary = Summary(scarlar_summary)
+    
+    # if epoch_end:
+    #     predicts = model.predict(valid_x)
+
+    #     for img_op in image_summary_ops:
+    #         image_summary = img_op(valid_x, valid_y, predicts)
+
+    #         summary.update_images(image_summary)
+
+    # return summary
+
+
+def train_tf_data_op(model, data, i_epoch, i_batch, epoch_end, **kwargs):
+    def adapter(data, i_epoch, i_batch, epoch_end):
+        return K.get_session().run(data)
+
+    return _train_op(model, data, adapter, i_epoch, i_batch, epoch_end, **kwargs)
+
+
+def train_generator_data_op(model, data, i_epoch, i_batch, epoch_end, **kwargs):
+    def adapter(data, i_epoch, i_batch, epoch_end):
+        return next(data)
+
+    return _train_op(model, data, adapter, i_epoch, i_batch, epoch_end, **kwargs)
+
+
+def train_monitor(
+    models,
+    train_data,
+    train_op=train_generator_data_op,
+    epochs=None,
+    init_epochs=0,
+    step_per_epoch=None,
+    valid_data=None,
+    valid_op=None,
+    logdir=None,
+    restore=True,
+    callbacks=[],
+    summary_ops=[],
+    verbose=1,
+):
+    # initialise variables
+    training_history = cbks.BatchHistory()
+    epochs = epochs or np.inf
+    step_per_epoch = step_per_epoch or 1000
+    total_step = epochs * step_per_epoch
+    i_epoch = init_epochs
+    callbacks.append(training_history)
+    if logdir:
+        callbacks.append(cbks.Monitor(logdir, models, restore=restore))
+        if restore:
+            i_epoch = max_epoch(logdir)
+
+    all_cbks = cbks.CallbackList(callbacks)
+    all_summaries = [_base_image_summary_op] + summary_ops
+    step_time = []
+
+    # start training
+    all_cbks.on_train_begin()
+    while i_epoch < epochs:
+        all_cbks.on_epoch_begin(i_epoch)
+
+        # ---------- epoch start -----------
+        for i_batch in range(step_per_epoch):
+            all_cbks.on_batch_begin(i_batch)
+            current_step = i_epoch * step_per_epoch + i_batch
+
+            # ---------- batch start -----------
+            batch_start_time = time.time()
+            batch_train_log = train_op(
+                models, 
+                train_data, 
+                i_epoch=i_epoch, 
+                i_batch=i_batch, 
+                epoch_end=step_per_epoch-i_batch == 1,
+                image_summary_ops=all_summaries,
+                training_history=training_history
+            )
+
+            all_cbks.on_batch_end(i_batch, logs=batch_train_log)
+            batch_end_time = time.time()
+            step_time.append(batch_end_time - batch_start_time)
+            if len(step_time) > step_per_epoch:
+                step_time.pop(0)
+
+            avg_step_time = np.mean(step_time)
+            estimate_finishing_time = (
+                total_step - current_step) * avg_step_time
+
+            # build batch summary
+            logs = Summary({
+                'epoch': '%.0f/%.0f' % (i_epoch, epochs),
+                'batch': '%.0f/%.0f' % (i_batch, step_per_epoch),
+                'remaining_time': str(datetime.timedelta(seconds=estimate_finishing_time)),
+                'avg_step_time': avg_step_time,
+            })
+            logs.update(batch_train_log)
+            if verbose > 1:
+                print_dynamic(str(logs))
+            # ---------- batch end -------------
+        if valid_data is not None and valid_op is not None:
+            batch_valid_log = valid_op(
+                models, 
+                train_data,
+                image_summary_ops=all_summaries
+            )
+            logs.update(batch_valid_log)
+
         if verbose:
-            callbacks += [cbks.ProgbarLogger(count_mode='steps')]
-        callbacks = cbks.CallbackList(callbacks)
-        callbacks.set_model(callback_model)
-        model.callbacks = callbacks
+            print_dynamic(str(logs))
 
-    model.callbacks.set_params({
-        'epochs': epochs,
-        'steps': steps_per_epoch,
-        'verbose': verbose,
-        'do_validation': do_validation,
-        'metrics': callback_metrics,
-    })
-    model.callbacks.on_train_begin()
+        # ---------- epoch end -------------
+        all_cbks.on_epoch_end(i_epoch, logs=batch_train_log)
+        i_epoch += 1
 
-    enqueuer = None
-    val_enqueuer = None
-
-    try:
-        if do_validation and not val_gen:
-            # Prepare data for validation
-            if len(validation_data) == 2:
-                val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-                val_sample_weight = None
-            elif len(validation_data) == 3:
-                val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
-            else:
-                raise ValueError(
-                    '`validation_data` should be a tuple '
-                    '`(val_x, val_y, val_sample_weight)` '
-                    'or `(val_x, val_y)`. Found: ' + str(validation_data))
-            val_x, val_y, val_sample_weights = model._standardize_user_data(
-                val_x, val_y, val_sample_weight)
-            val_data = val_x + val_y + val_sample_weights
-            if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
-                val_data += [0.]
-            for cbk in callbacks:
-                cbk.validation_data = val_data
-
-        if workers > 0:
-            if is_sequence:
-                enqueuer = OrderedEnqueuer(
-                    generator,
-                    use_multiprocessing=use_multiprocessing,
-                    shuffle=shuffle)
-            else:
-                enqueuer = GeneratorEnqueuer(
-                    generator,
-                    use_multiprocessing=use_multiprocessing,
-                    wait_time=wait_time)
-            enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-            output_generator = enqueuer.get()
-        else:
-            if is_sequence:
-                output_generator = iter(generator)
-            else:
-                output_generator = generator
-
-        callback_model.stop_training = False
-        # Construct epoch logs.
-        epoch_logs = {}
-        while epoch < epochs:
-            for m in model.stateful_metric_functions:
-                m.reset_states()
-            callbacks.on_epoch_begin(epoch)
-            steps_done = 0
-            batch_index = 0
-            while steps_done < steps_per_epoch:
-                generator_output = next(output_generator)
-
-                if not hasattr(generator_output, '__len__'):
-                    raise ValueError('Output of generator should be '
-                                     'a tuple `(x, y, sample_weight)` '
-                                     'or `(x, y)`. Found: ' + str(generator_output))
-
-                if len(generator_output) == 2:
-                    x, y = generator_output
-                    sample_weight = None
-                elif len(generator_output) == 3:
-                    x, y, sample_weight = generator_output
-                else:
-                    raise ValueError('Output of generator should be '
-                                     'a tuple `(x, y, sample_weight)` '
-                                     'or `(x, y)`. Found: ' + str(generator_output))
-                # build batch logs
-                batch_logs = {}
-                if isinstance(x, list):
-                    batch_size = x[0].shape[0]
-                elif isinstance(x, dict):
-                    batch_size = list(x.values())[0].shape[0]
-                else:
-                    batch_size = x.shape[0]
-                batch_logs['batch'] = batch_index
-                batch_logs['size'] = batch_size
-                callbacks.on_batch_begin(batch_index, batch_logs)
-
-                outs = model.train_on_batch(
-                    x, y, sample_weight=sample_weight, class_weight=class_weight)
-
-                if not isinstance(outs, list):
-                    outs = [outs]
-                for l, o in zip(out_labels, outs):
-                    batch_logs[l] = o
-
-                callbacks.on_batch_end(batch_index, batch_logs)
-
-                batch_index += 1
-                steps_done += 1
-
-                # Epoch finished.
-                if steps_done >= steps_per_epoch and do_validation:
-                    if val_gen:
-                        val_outs = evaluate_generator(
-                            model,
-                            validation_data,
-                            validation_steps,
-                            workers=workers,
-                            use_multiprocessing=use_multiprocessing,
-                            max_queue_size=max_queue_size)
-                    else:
-                        # No need for try/except because
-                        # data has already been validated.
-                        val_outs = model.evaluate(
-                            val_x,
-                            val_y,
-                            batch_size=batch_size,
-                            sample_weight=val_sample_weights,
-                            verbose=0)
-                    if not isinstance(val_outs, list):
-                        val_outs = [val_outs]
-                    # Same labels assumed.
-                    for l, o in zip(out_labels, val_outs):
-                        epoch_logs['val_' + l] = o
-
-                if callback_model.stop_training:
-                    break
-
-            callbacks.on_epoch_end(epoch, epoch_logs)
-            epoch += 1
-            if callback_model.stop_training:
-                break
-
-    finally:
-        try:
-            if enqueuer is not None:
-                enqueuer.stop()
-        finally:
-            if val_enqueuer is not None:
-                val_enqueuer.stop()
-
-    callbacks.on_train_end()
-    return model.history
+    return training_history

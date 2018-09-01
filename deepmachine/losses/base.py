@@ -1,10 +1,9 @@
 import tensorflow as tf
-
+import keras
+from keras.utils import get_custom_objects
 from . import helper
 from .. import utils
 from ..flags import FLAGS
-
-get_custom_objects = tf.keras.utils.get_custom_objects
 
 
 def loss_heatmap_regression(y_true, y_pred, heatmap_weight=500):
@@ -20,7 +19,7 @@ def loss_heatmap_regression(y_true, y_pred, heatmap_weight=500):
     return l2norm
 
 
-def loss_iuv_regression(y_true, y_pred, n_feature=26):
+def loss_iuv_regression(y_true, y_pred):
     n_feature = y_pred.shape.as_list()[-1] // 3
 
     # mask index cross-entropy loss

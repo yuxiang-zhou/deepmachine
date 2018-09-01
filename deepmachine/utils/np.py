@@ -11,7 +11,9 @@ from pathlib import Path
 from scipy.io import loadmat
 from menpo.image import Image
 from menpo.shape import PointCloud, TriMesh, ColouredTriMesh
-from menpo.transform import Translation, Scale
+from menpo.transform import Translation, Scale, AlignmentSimilarity
+from menpo.model import pca
+
 
 def union_dict(dicts):
     udict = {}
@@ -31,7 +33,7 @@ def fill_hole_row(r):
         else:
             if r[p_e] == 0:
                 p_e += 1
-                
+
             if r[p_s] > 0:
                 p_s += 1
                 p_e = p_s
@@ -44,7 +46,7 @@ def fill_hole(img):
 
     for r in img_hf.T:
         fill_hole_row(r)
-        
+
     return img_hf
 
 
@@ -70,10 +72,11 @@ def rotation_matrix(angle, direction, point=None):
 
 def uv_template_from_mesh(mesh, uv_shape=(256, 256)):
     from menpo3d.unwrap import optimal_cylindrical_unwrap
-    
+
     UV_template = optimal_cylindrical_unwrap(mesh).apply(mesh)
     UV_template.points = UV_template.points[:, [1, 0]]
-    UV_template.points[:, 0] = UV_template.points[:, 0].max() - UV_template.points[:, 0]
+    UV_template.points[:, 0] = UV_template.points[:,
+                                                  0].max() - UV_template.points[:, 0]
 
     UV_template.points -= UV_template.points.min(axis=0)
     UV_template.points /= UV_template.points.max(axis=0)
@@ -281,29 +284,6 @@ def crop_image(img, center, scale, res, base=384., order=1):
     return new_img, trans, c_scale
 
 
-def normalized_point_to_point_error(preds, gts, factor=1):
-    dists = tf.sqrt(tf.reduce_sum(tf.pow(preds - gts, 2),
-                                  reduction_indices=-1)) / factor
-    return dists
-
-
-def pckh(preds, gts, scales):
-    t_range = np.arange(0, 0.51, 0.01)
-    dists = normalized_point_to_point_error(preds, gts, factor=scales)
-    return ced_accuracy(0.5, dists)
-
-
-def ced_accuracy(t, dists):
-    # Head	 Shoulder	Elbow	Wrist	Hip	   Knee	   Ankle
-    pts_r = tf.transpose(
-        tf.gather(tf.transpose(dists), [8, 12, 11, 10, 2, 1, 0]))
-    pts_l = tf.transpose(
-        tf.gather(tf.transpose(dists), [9, 13, 14, 15, 3, 4, 5]))
-    part_pckh = (tf.to_int32(pts_r <= t) + tf.to_int32(pts_l <= t)) / 2
-
-    return tf.concat([part_pckh, tf.reduce_sum(tf.to_int32(dists <= t), 1)[..., None] / tf.shape(dists)[1]], 1)
-
-
 def arclen_polyl(cnt):
 
     tang = np.diff(cnt, axis=0)
@@ -373,6 +353,11 @@ def sample_points(target, range_x, range_y, edge=None, x=0, y=0):
                     # print('Index out of Bound')
 
     return ret_img
+
+
+def max_epoch(path):
+    path = Path(path).glob('*weights.*.hdf5')
+    return np.max([0]+[int(p.suffixes[0][1:]) for p in path])
 
 
 def rgb2hex(rgb):
@@ -468,6 +453,19 @@ def channels_to_rgb(pixels,
     )
 
     return pixels.dot(colours) / 255.
+
+
+def channels_to_grid(pixels, n_col=4):
+
+    h, w, n_channel = pixels.shape
+    n_col = np.min([n_col, n_channel])
+    n_row = n_channel // n_col
+    grid = pixels[:, :, :n_col *
+                  n_row].reshape([h, w, n_col, n_row]).transpose([2, 3, 0, 1])
+    grid = np.concatenate(grid, axis=2)
+    grid = np.concatenate(grid, axis=0)
+
+    return grid
 
 
 svs_rgb = channels_to_rgb

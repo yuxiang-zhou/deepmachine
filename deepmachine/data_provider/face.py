@@ -1,13 +1,12 @@
 import numpy as np
 import tensorflow as tf
-
+import functools
+from menpo.visualize import print_progress
 from pathlib import Path
 
-from ..flags import FLAGS
-from .base import *
-from .features import *
-from .resolvers import *
-
+from .base import Provider, TFRecordNoFlipProvider
+from .features import FeatureIUV, FeatureHeatmap
+from .resolvers import ResolverHMFace, ResolverIUVFace, image_resolver, iuv_resolver
 
 def generate_occlusion(image, uv):
     def wrap(image, uv):
@@ -279,7 +278,7 @@ class TFUVCompletionProvider(Provider):
         if self._count is None:
             self._count = 0
             for path in self._dirpath.split(','):
-                self._count += len(list(Path(self._dirpath).glob('*.png')))
+                self._count += len(list(Path(path).glob('*.png')))
 
         return self._count
 

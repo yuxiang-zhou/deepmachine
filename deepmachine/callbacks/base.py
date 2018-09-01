@@ -1,17 +1,20 @@
 import tensorflow as tf
-
+import keras
+import numpy as np
 import functools
+import collections
+import matplotlib.pyplot as plt
+from keras import backend as K
+from io import BytesIO
 
 slim = tf.contrib.slim
-K = tf.keras.backend
 
 from .. import utils
-from tensorflow.python.summary import summary as tf_summary
 
 
 def summary_iuv(data, shape=None, name='iuvs'):
 
-    batch_size, height, width, channels = shape or data.get_shape().as_list()
+    _, _, _, channels = shape or data.get_shape().as_list()
     iuv_rgb = utils.tf_iuv_rgb(data, n_feature=channels//3)
 
     # iuv summary
@@ -22,7 +25,7 @@ def summary_iuv(data, shape=None, name='iuvs'):
 
 
 def summary_landmarks(data, shape=None, name='ladnmarks'):
-    batch_size, height, width, channels = shape or data.get_shape().as_list()
+    _, _, _, channels = shape or data.get_shape().as_list()
 
     # landmarks summary
     tf.summary.image(
@@ -32,7 +35,7 @@ def summary_landmarks(data, shape=None, name='ladnmarks'):
 
 
 def summary_batch(data, shape=None, name='batch', col_size=4):
-    batch_size, height, width, channels = shape or data.get_shape().as_list()
+    batch_size, height, width, _ = shape or data.get_shape().as_list()
 
     tf.summary.image(
         name,
@@ -46,188 +49,117 @@ def summary_batch(data, shape=None, name='batch', col_size=4):
 
 def summary_image_batch(data, shape=None, name='image_batch', col_size=4):
 
-    batch_size, height, width, channels = shape or data.get_shape().as_list()
+    batch_size, height, width, _ = shape or data.get_shape().as_list()
 
     tf.summary.image(
         name,
         tf.map_fn(
             functools.partial(utils.tf_image_batch_to_grid, col_size=col_size),
             tf.transpose(tf.reshape(tf.transpose(
-                data, [0, 3, 1, 2]), [batch_size, -1, 3, height, width]), [0,1,3,4,2])
+                data, [0, 3, 1, 2]), [batch_size, -1, 3, height, width]), [0, 1, 3, 4, 2])
         ),
         max_outputs=3)
 
 
-class TBSummary(tf.keras.callbacks.TensorBoard):
+class Monitor(keras.callbacks.Callback):
 
-    def set_model(self, model):
+    def __init__(self, logdir, models=None, restore=True, *args, **kwargs):
+        self.logdir = logdir
+        self.writer = tf.summary.FileWriter(logdir,  K.get_session().graph)
+        self.models = models
+        self.restore = restore
 
-        # add learning rate summary
-        optimizer = model.optimizer
-        tf.summary.scalar('learning_rate', optimizer.lr)
+    def _standarize_images(self, images):
+        if images.min() < 0:
+            images = (images.clip(-1, 1) + 1) / 2.
 
-        # add image summary
-        for index, tf_inputs in enumerate(model.inputs):
-            name = 'default_summary/inputs_%02d' % index
-            # normalise images
-            tf_inputs_shape = tf_inputs.shape.as_list()
-            tf_inputs_shape[0] = tf_inputs_shape[0] or self.batch_size
+        if images.max() > 1:
+            images = images.clip(0, 1)
 
-            if tf_inputs_shape[-1] in [1, 3, 4]:
-                tf.summary.image(name, tf_inputs)
-            else:
-                summary_batch(tf_inputs, shape=tf_inputs_shape, name=name)
+        if images.shape[-1] not in [1, 3, 4]:
+            images = np.array(list(map(utils.channels_to_grid, images)))
 
-        for index, (tf_targets, tf_outputs) in enumerate(zip(model.targets, model.outputs)):
-            name = 'default_summary/{}_%02d' % index
-            tf_shape = tf_outputs.shape.as_list()
-            tf_shape[0] = tf_shape[0] or self.batch_size
+        return images
 
-            # normalise images
+    def log_images(self, tag, images, step, max_images=4):
+        """Logs a list of images."""
+        images = self._standarize_images(images)
+        im_summaries = []
+        for nr, img in enumerate(images[:max_images]):
+            # Write the image to a string
+            s = BytesIO()
+            plt.imsave(s, img, format='png')
 
-            if tf_shape[-1] in [1, 3, 4]:
-                tf.summary.image(name.format('targets'), tf_targets)
-                tf.summary.image(name.format('outputs'), tf_outputs)
-            else:
-                summary_batch(tf_targets, shape=tf_shape,
-                              name=name.format('targets'))
-                summary_batch(tf_outputs, shape=tf_shape,
-                              name=name.format('outputs'))
+            # Create an Image object
+            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(),
+                                       height=img.shape[0],
+                                       width=img.shape[1])
+            # Create a Summary value
+            im_summaries.append(tf.Summary.Value(tag='%s/%d' % (tag, nr),
+                                                 image=img_sum))
 
-        if hasattr(model, 'summaries') and model.summaries and len(model.summaries) == 2:
-            summaries = []
-            if type(model.summaries[0]) is not list:
-                summaries += [model.summaries[0]]
-            else:
-                summaries += model.summaries[0]
+        # Create and write Summary
+        summary = tf.Summary(value=im_summaries)
+        self.writer.add_summary(summary, step)
 
-            if type(model.summaries[1]) is not list:
-                summaries += [model.summaries[1] for _ in range(2)]
-            else:
-                summaries += model.summaries[1] + model.summaries[1]
-
-            tensors = model.inputs + model.outputs + model.targets
-            assert len(tensors) == len(summaries)
-            for summary_fn, tensor in zip(summaries, tensors):
-                if callable(summary_fn):
-                    summary_fn(
-                        tensor, name='{}/{}'.format('user_summaries', tensor.name.replace(':0','')))
-
-        super().set_model(model)
-
-    def on_batch_end(self, batch, logs=None):
-        # rewrite on_epoch_end to support tensor input visualisation
-        logs = logs or {}
-
-        logs_print = logs.copy()
-
-        logs_print.update({
-            'current_epoch': self.model.epoch,
-            'current_batch': batch + 1
-        })
-
-        self.model.progress_bar.update(
-            self.model.epoch * self.model.steps_per_epoch + batch + 1,
-            values=logs_print.items()
-        )
-
-        super().on_batch_end(batch, logs)
+    def log_scalar(self, tag, value, step):
+        """Log a scalar variable.
+        Parameter
+        ----------
+        tag : basestring
+            Name of the scalar
+        value
+        step : int
+            training iteration
+        """
+        summary = tf.Summary(value=[tf.Summary.Value(tag=tag,
+                                                     simple_value=value)])
+        self.writer.add_summary(summary, step)
 
     def on_epoch_end(self, epoch, logs=None):
-        # rewrite on_epoch_end to support tensor input visualisation
-        logs = logs or {}
+        logs = utils.Summary(logs)
 
-        logs_print = logs.copy()
+        for name, value in logs.scalars.items():
+            if type(value) is not str:
+                self.log_scalar(name, value, epoch)
 
-        logs_print.update({
-            'current_epoch': epoch + 1,
-            'current_batch': 0
-        })
+        for name, value in logs.images.items():
+            self.log_images(name, value, epoch)
 
-        self.model.epoch = epoch + 1
+        self.writer.flush()
 
-        self.model.progress_bar.update(
-            self.model.epoch * self.model.steps_per_epoch,
-            values=logs_print.items()
-        )
-
-        if self.histogram_freq:
-            if not self.validation_data:
-                result = self.sess.run([self.merged])
-                summary_str = result[0]
-                self.writer.add_summary(summary_str, epoch)
-
-            else:
-                if epoch % self.histogram_freq == 0:
-
-                    val_data = self.validation_data
-                    tensors = (
-                        self.model.inputs + self.model.targets + self.model.sample_weights)
-
-                    if self.model.uses_learning_phase:
-                        tensors += [K.learning_phase()]
-
-                    assert len(val_data) == len(tensors)
-                    val_size = val_data[0].shape[0]
-                    if not isinstance(val_size, int):
-                        val_size = self.batch_size
-
-                    i = 0
-                    while i < val_size:
-                        step = min(self.batch_size, val_size - i)
-                        batch_val = []
-                        batch_val.append(val_data[0][i:i + step]
-                                         if val_data[0] is not None else None)
-                        batch_val.append(val_data[1][i:i + step]
-                                         if val_data[1] is not None else None)
-                        batch_val.append(val_data[2][i:i + step]
-                                         if val_data[2] is not None else None)
-                        if self.model.uses_learning_phase:
-                            # do not slice the learning phase
-                            batch_val = [x[i:i + step] if x is not None else None
-                                         for x in val_data[:-1]]
-                            batch_val.append(val_data[-1])
-                        else:
-                            batch_val = [x[i:i + step] if x is not None else None
-                                         for x in val_data]
-                        feed_dict = {}
-                        for key, val in zip(tensors, batch_val):
-                            if val is not None:
-                                if isinstance(val, tf.Tensor):
-                                    val = self.sess.run(val)
-                                feed_dict[key] = val
-                        result = self.sess.run(
-                            [self.merged], feed_dict=feed_dict)
-                        summary_str = result[0]
-                        self.writer.add_summary(summary_str, epoch)
-                        i += self.batch_size
-
-            for name, value in logs.items():
-                if name in ['batch', 'size']:
-                    continue
-                summary = tf_summary.Summary()
-                summary_value = summary.value.add()
-                summary_value.simple_value = value.item() if hasattr(value, 'item') else value
-                summary_value.tag = name
-                self.writer.add_summary(summary, epoch)
-            
-            self.writer.flush()
+        super().on_epoch_end(epoch, logs=logs)
 
     def on_train_begin(self, logs=None):
-        logs = logs or {}
-        self.model.epoch = 0
-        logs_print = logs.copy()
-
-        logs_print.update({
-            'current_epoch': self.model.epoch,
-            'current_batch': 0
-        })
-
-        self.model.progress_bar.update(
-            self.model.epoch * self.model.steps_per_epoch,
-            values=logs_print.items()
-        )
-
         self.writer.reopen()
 
+        if not isinstance(self.models, collections.Iterable):
+            self.models = [self.models]
+
+        init_epoch = utils.max_epoch(self.logdir)
+        if self.restore and init_epoch > 0:
+            for m in self.models:
+                if m:
+                    m.load_weights('{}/{}-weights.{:05d}.hdf5'.format(
+                        self.logdir,
+                        m.name, init_epoch))
+
         super().on_train_begin(logs)
+
+
+class BatchHistory(keras.callbacks.Callback):
+    """Callback that records events into a `History` object.
+    This callback is automatically applied to
+    every Keras model. The `History` object
+    gets returned by the `fit` method of models.
+    """
+
+    def on_train_begin(self, logs=None):
+        self.history = {}
+
+    def on_batch_end(self, batch, logs=None):
+        logs = logs or {}
+        for k, v in logs.items():
+            self.history.setdefault(k, []).append(v)
+            if len(self.history[k]) > 10:
+                self.history[k].pop(0)

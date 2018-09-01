@@ -12,7 +12,6 @@ from menpo.transform import Translation
 
 import sys
 
-from ..flags import FLAGS
 from .. import utils
 
 slim = tf.contrib.slim
@@ -20,7 +19,7 @@ slim = tf.contrib.slim
 ResizeMethod = tf.image.ResizeMethod
 
 class EarProvider(object):
-    def __init__(self, filename=FLAGS.dataset_dir, batch_size=1, augmentation=False):
+    def __init__(self, filename, batch_size=1, augmentation=False):
         self.filename = filename
         self.batch_size = batch_size
         self.augmentation = augmentation
@@ -122,7 +121,7 @@ class EarProvider(object):
 
 
 class FaceProvider(object):
-    def __init__(self, filename=FLAGS.dataset_dir, batch_size=1, id_size=1, augmentation=False):
+    def __init__(self, filename, batch_size=1, id_size=1, augmentation=False):
         self.filename = filename
         self.batch_size = batch_size
         self.id_size = id_size
@@ -175,7 +174,7 @@ class FaceProvider(object):
         return image[:self.id_size,...], image_height, image_width, tf.tile([id_no-1], [self.id_size])
 
     def _set_shape(self, image):
-        image.set_shape([self.id_size, FLAGS.image_size, FLAGS.image_size, 3])
+        image.set_shape([self.id_size, 256, 256, 3])
 
 
     # Data from protobuff
@@ -210,8 +209,8 @@ class FaceProvider(object):
 
 
         # crop to 224 * 224
-        target_h = tf.to_int32(FLAGS.image_size)
-        target_w = tf.to_int32(FLAGS.image_size)
+        target_h = tf.to_int32(256)
+        target_w = tf.to_int32(256)
         offset_h = tf.to_int32((image_height - target_h) / 2)
         offset_w = tf.to_int32((image_width - target_w) / 2)
 
@@ -288,7 +287,7 @@ def get_databatch(paths, n_ids):
 
 
 class ImageBatchLabelProvider(object):
-    def __init__(self, dirpath=FLAGS.dataset_dir, batch_size=1, id_size=1, augmentation=False, image_size=160):
+    def __init__(self, dirpath, batch_size=1, id_size=1, augmentation=False, image_size=160):
         self.dirpath = dirpath
         self.batch_size = batch_size
         self.id_size = id_size
@@ -349,7 +348,7 @@ class ImageBatchLabelProvider(object):
 
 
 class ImageLabelProvider(object):
-    def __init__(self, dirpath=FLAGS.dataset_dir, batch_size=1, augmentation=False, image_size=160):
+    def __init__(self, dirpath, batch_size=1, augmentation=False, image_size=160):
         self.dirpath = dirpath
         self.batch_size = batch_size
         self.augmentation = augmentation

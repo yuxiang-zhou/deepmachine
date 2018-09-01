@@ -1,9 +1,8 @@
 import tensorflow as tf
-
-Layer = tf.keras.layers.Layer
-InputSpec = tf.keras.layers.InputSpec
-K = tf.keras.backend
-get_custom_objects = tf.keras.utils.get_custom_objects
+import keras
+import keras.backend as K
+from keras.utils import get_custom_objects
+from keras.layers import Layer, InputSpec
 
 class _CoordinateChannel(Layer):
     """ Adds Coordinate Channels to the input tensor.

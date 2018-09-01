@@ -1,3 +1,3 @@
-from tensorflow.contrib.keras.api.keras.losses import *
+from keras.losses import *
 from .base import *
 from .gan import *

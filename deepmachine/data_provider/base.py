@@ -156,7 +156,7 @@ class TFDirectoryProvider(Provider):
         if self._count is None:
             self._count = 0
             for path in self._dirpath.split(','):
-                self._count += len(list(Path(self._dirpath).glob('*.jpg')))
+                self._count += len(list(Path(path).glob('*.jpg')))
 
         return self._count
 
@@ -164,7 +164,7 @@ class TFDirectoryProvider(Provider):
 
         filelist = []
         for path in self._dirpath.split(','):
-            filelist += list(map(str, Path(self._dirpath).glob('*.jpg')))
+            filelist += list(map(str, Path(path).glob('*.jpg')))
 
         tf_filelist = tf.convert_to_tensor(filelist)
         self._count = n_items = len(filelist)
@@ -289,7 +289,7 @@ class DatasetPairer(Provider):
         return self._count
 
     def get(self, *keys):
-        queue = None
+        
         tensors_all = []
         n_providers = len(self.providers)
         n_keys = len(keys)
@@ -298,9 +298,6 @@ class DatasetPairer(Provider):
             tensor_dict = p.get(*keys)
             tensors = [tensor_dict[k] for k in keys]
             tensors_all += tensors
-
-        dtypes = [x.dtype for x in tensors_all]
-        shapes_all = [x.get_shape() for x in tensors_all]
 
         merged_batch = []
         for tensors_to_merge in [tensors_all[i::n_keys] for i in range(n_providers)]:

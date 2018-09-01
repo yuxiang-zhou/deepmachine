@@ -1,16 +1,37 @@
-# import tensorflow as tf
+import tensorflow as tf
+import keras
+import keras.backend as K
+from keras.utils import get_custom_objects
+from keras.layers import Layer
 
-# class Conv2D(tf.keras.layers.Conv2D):
-#     def __init__(self, *args, activation=tf.keras.layers.LeakyReLU, batch_normalize=tf.keras.layers.BatchNormalization, **kwargs):
-#         self.activation = activation
-#         self.batchnorm = batch_normalize
-#         super().__init__(*args, **kwargs)
+class InstanceNormalization2D(Layer):
+    ''' Thanks for github.com/jayanthkoushik/neural-style '''
+    def __init__(self, **kwargs):
+        super(InstanceNormalization2D, self).__init__(**kwargs)
 
-#     def call(self, inputs):
-#         outputs = super().call(inputs)
-#         if self.batchnorm is not None:
-#             outputs = self.batchnorm()(outputs)
-#         if self.activation is not None:
-#             outputs = self.activation()(outputs)
-        
-#         return outputs
+    def build(self, input_shape):
+        self.scale = self.add_weight(name='scale', shape=(input_shape[1],), initializer="one", trainable=True)
+        self.shift = self.add_weight(name='shift', shape=(input_shape[1],), initializer="zero", trainable=True)
+        super(InstanceNormalization2D, self).build(input_shape)
+
+    def call(self, x, mask=None):
+        def image_expand(tensor):
+            return K.expand_dims(K.expand_dims(tensor, -1), -1)
+
+        def batch_image_expand(tensor):
+            return image_expand(K.expand_dims(tensor, 0))
+
+        hw = K.cast(x.shape[2] * x.shape[3], K.floatx())
+        mu = K.sum(x, [-1, -2]) / hw
+        mu_vec = image_expand(mu) 
+        sig2 = K.sum(K.square(x - mu_vec), [-1, -2]) / hw
+        y = (x - mu_vec) / (K.sqrt(image_expand(sig2)) + K.epsilon())
+
+        scale = batch_image_expand(self.scale)
+        shift = batch_image_expand(self.shift)
+        return scale*y + shift 
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+get_custom_objects().update({'InstanceNormalization2D': InstanceNormalization2D})

@@ -1,6 +1,4 @@
 import tensorflow as tf
-
-from .base import *
 from ..utils import union_dict
 
 

@@ -3,7 +3,7 @@ import menpo.io as mio
 import menpo
 from scipy.interpolate import interp1d
 import scipy as sp
-
+from collections import OrderedDict
 from pathlib import Path
 from scipy.io import loadmat
 from menpo.image import Image
@@ -61,3 +61,45 @@ parts_68 = (jaw_indices, lbrow_indices, rbrow_indices, upper_nose_indices,
             lower_nose_indices, leye_indices, reye_indices,
             outer_mouth_indices, inner_mouth_indices)
 
+
+class Summary(object):
+    def __init__(self, scalars=None, images=None):
+        self.scalars = OrderedDict()
+        self.images = OrderedDict()
+
+        if isinstance(scalars, Summary):
+            self.update(scalars)
+        else:
+            if scalars:
+                self.scalars.update(scalars)
+            
+            if images:
+                self.images.update(images)
+
+    def __str__(self, *args, **kwargs):
+        format_string = 'Dictionary Contents: \t'
+        for k, v in self.scalars.items():
+            if type(v) is str:
+                format_string += '  %s: %s\t'%(k, v)
+            else:
+                format_string += '  %s: %3.5f\t'%(k, v)
+        return format_string
+
+    def get(self, *args, **kwargs):
+        return self.scalars.get(*args, **kwargs)
+
+    def items(self, *args, **kwargs):
+        return self.scalars.items(*args, **kwargs)
+
+    def update_scalars(self, data):
+        self.scalars.update(data)
+
+    def update_images(self, data):
+        self.images.update(data)
+
+    def update(self, data):
+        if isinstance(data, Summary):
+            self.scalars.update(data.scalars)
+            self.images.update(data.images)
+        else:
+            self.scalars.update(data)
