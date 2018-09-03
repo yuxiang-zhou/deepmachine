@@ -13,7 +13,6 @@ from menpo.transform import Translation
 
 import sys
 
-from ..flags import FLAGS
 from ..utils import tf_lms_to_heatmap, tf_rotate_points
 from .base import *
 from .resolvers import *

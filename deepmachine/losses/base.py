@@ -3,7 +3,6 @@ import keras
 from keras.utils import get_custom_objects
 from . import helper
 from .. import utils
-from ..flags import FLAGS
 
 
 def loss_heatmap_regression(y_true, y_pred, heatmap_weight=500):

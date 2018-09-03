@@ -1,6 +1,7 @@
 import numpy as np
 import menpo.io as mio
 import math
+import keras
 from scipy.interpolate import interp1d
 import scipy as sp
 import binascii
@@ -469,3 +470,14 @@ def channels_to_grid(pixels, n_col=4):
 
 
 svs_rgb = channels_to_rgb
+
+def enqueue_generator(data_generator, use_multiprocessing=True, workers=4, max_queue_size=256):
+    enqueuer = keras.utils.data_utils.GeneratorEnqueuer(
+        data_generator,
+        use_multiprocessing=use_multiprocessing,
+        wait_time=0)
+    enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+
+    output_generator = enqueuer.get()
+
+    return output_generator

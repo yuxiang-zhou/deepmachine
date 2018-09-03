@@ -3,7 +3,6 @@ slim = tf.contrib.slim
 
 from . import helper
 from .. import utils
-from ..flags import FLAGS
 
 EPS = 1e-12
 

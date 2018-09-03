@@ -163,17 +163,17 @@ def train_monitor(
             avg_step_time = np.mean(step_time)
             estimate_finishing_time = (
                 total_step - current_step) * avg_step_time
+            batch_train_log.update_scalars({'avg_step_time': avg_step_time,})
 
             # build batch summary
             logs = Summary({
                 'epoch': '%.0f/%.0f' % (i_epoch, epochs),
                 'batch': '%.0f/%.0f' % (i_batch, step_per_epoch),
                 'remaining_time': str(datetime.timedelta(seconds=estimate_finishing_time)),
-                'avg_step_time': avg_step_time,
             })
             logs.update(batch_train_log)
             if verbose > 1:
-                print_dynamic(str(logs))
+                print(str(logs))
             # ---------- batch end -------------
         if valid_data is not None and valid_op is not None:
             batch_valid_log = valid_op(

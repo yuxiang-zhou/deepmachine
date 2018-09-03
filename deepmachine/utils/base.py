@@ -77,12 +77,12 @@ class Summary(object):
                 self.images.update(images)
 
     def __str__(self, *args, **kwargs):
-        format_string = 'Dictionary Contents: \t'
+        format_string = 'Dictionary Contents: \n'
         for k, v in self.scalars.items():
             if type(v) is str:
-                format_string += '  %s: %s\t'%(k, v)
+                format_string += '  %s: %s\n'%(k, v)
             else:
-                format_string += '  %s: %3.5f\t'%(k, v)
+                format_string += '  %s: %3.5f\n'%(k, v)
         return format_string
 
     def get(self, *args, **kwargs):

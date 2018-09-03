@@ -90,13 +90,8 @@ class DeepMachine(keras.Model):
         # prepare generator
         kwargs['callbacks'].append(data_generator)
 
-        enqueuer = utils.data_utils.GeneratorEnqueuer(
-            data_generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=None)
-        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-
-        output_generator = enqueuer.get()
+        output_generator = utils.enqueue_generator(
+            data_generator, use_multiprocessing=use_multiprocessing, workers=workers, max_queue_size=max_queue_size)
 
         # start training
         history = engine.training.train_monitor(

@@ -18,6 +18,9 @@ tf.app.flags.DEFINE_string('logdir', None,
 tf.app.flags.DEFINE_integer('batch_size', 32,
                     '''Batch Size''')
 
+tf.app.flags.DEFINE_integer('verbose', 1,
+                    '''Stdout infomation details''')
+                    
 tf.app.flags.DEFINE_float('lr', 2e-4,
                     '''Learning rate''')
 
