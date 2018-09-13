@@ -42,6 +42,16 @@ def image_builder(data):
         'width': _int_feauture(image.shape[1])
     }
 
+def uvxyz_builder(data):
+    image = data['uvxyz']
+    mask = data['uvxyz/mask']
+    return {
+        'uvxyz': _bytes_feauture(image.pixels_with_channels_at_back().astype(np.float32).tobytes()),
+        'uvxyz/mask': _bytes_feauture(get_jpg_string(mask)),
+        'uvxyz/height': _int_feauture(image.shape[0]),
+        'uvxyz/width': _int_feauture(image.shape[1])
+    }
+
 def relative_landmark_builder(data):
     visible_pts = data['visible_pts']
     marked_index = data['marked_index']

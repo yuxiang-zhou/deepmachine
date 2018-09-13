@@ -2,35 +2,51 @@ import numpy as np
 import time
 import datetime
 import keras
+import tensorflow as tf
 
 from collections import OrderedDict
+from functools import partial
 from menpo.visualize import print_dynamic
 from .. import callbacks as cbks
 from keras import backend as K
 
 from ..utils import Summary, channels_to_rgb, max_epoch
 
+def _generator_adapter(data, i_epoch, i_batch, epoch_end):
+    return next(data)
+
+
+def _tf_dataset_adapter(data, i_epoch, i_batch, epoch_end):
+    return K.get_session().run(data)
+
+
+def _identity_adapter(data, i_epoch, i_batch, epoch_end):
+    return data
+
 
 def _base_image_summary_op(train_x, train_y, predicts):
+    train_x = [] if train_x is None else train_x
+    train_y = [] if train_y is None else train_y
+    predicts = [] if predicts is None else predicts
+
     image_summary = {}
     image_summary.update({'inputs/image_%d' % i: imgs
-                          for i, imgs in enumerate(train_x)})
+                          for i, imgs in enumerate(train_x) if len(imgs.shape) == 4})
     image_summary.update({'target/image_%d' % i: imgs
-                          for i, imgs in enumerate(train_y)})
+                          for i, imgs in enumerate(train_y) if len(imgs.shape) == 4})
     image_summary.update({'output/image_%d' % i: imgs
-                          for i, imgs in enumerate(predicts)})
+                          for i, imgs in enumerate(predicts) if len(imgs.shape) == 4})
 
     return image_summary
 
 
-def _train_op(model, data, adapter, i_epoch, i_batch, epoch_end, image_summary_ops=[], training_history=[], **kwargs):
+def _train_op(model, data, i_epoch, i_batch, epoch_end, adapter=_identity_adapter, image_summary_ops=[], training_history=[], **kwargs):
     train_x, train_y = adapter(data, i_epoch, i_batch, epoch_end)
     # ----------------------
     #  Train
     # ----------------------
     losses = model.train_on_batch(train_x, train_y)
-
-    if type(losses) is not list:
+    if type(losses) is not list and not isinstance(losses, np.ndarray):
         losses = [losses]
 
     # prepare summaries
@@ -40,13 +56,14 @@ def _train_op(model, data, adapter, i_epoch, i_batch, epoch_end, image_summary_o
     scarlar_summary.update(
         {"losses/loss_%d" % i: l for i, l in enumerate(losses[1:])})
     scarlar_summary.update(
-        {"learning_rate": model.optimizer.lr.eval(K.get_session())})
+        {"status/learning_rate": model.optimizer.lr.eval(K.get_session())})
 
     summary = Summary(scarlar_summary)
     
     if epoch_end:
         predicts = model.predict(train_x)
-
+        if len(predicts) != len(train_y):
+            predicts = [predicts]
         for img_op in image_summary_ops:
             image_summary = img_op(train_x, train_y, predicts)
 
@@ -55,50 +72,39 @@ def _train_op(model, data, adapter, i_epoch, i_batch, epoch_end, image_summary_o
     return summary
 
 
-def _valid_op(model, data, adapter, i_epoch, i_batch, epoch_end, image_summary_ops=[], training_history=[], **kwargs):
+def _valid_op(model, data, i_epoch, i_batch, epoch_end, adapter=_identity_adapter, image_summary_ops=[], training_history=[], **kwargs):
     valid_x, valid_y = adapter(data, i_epoch, i_batch, epoch_end)
     # ----------------------
     #  Validate
     # ----------------------
-    # pred_y = model.predict(valid_x, valid_y)
+    losses = model.evaluate(valid_x, valid_y, verbose=0)
 
-    # if type(losses) is not list:
-    #     losses = [losses]
+    if type(losses) is not list and not isinstance(losses, np.ndarray):
+        losses = [losses]
 
-    # # prepare summaries
-    # scarlar_summary = {
-    #     "losses/total_loss": losses[0]
-    # }
-    # scarlar_summary.update(
-    #     {"losses/loss_%d" % i: l for i, l in enumerate(losses[1:])})
-    # scarlar_summary.update(
-    #     {"learning_rate": model.optimizer.lr.eval(K.get_session())})
+    # prepare summaries
+    scarlar_summary = {
+        "losses/total_loss": losses[0]
+    }
+    scarlar_summary.update(
+        {"losses/loss_%d" % i: l for i, l in enumerate(losses[1:])})
 
-    # summary = Summary(scarlar_summary)
+    summary = Summary(scarlar_summary)
     
-    # if epoch_end:
-    #     predicts = model.predict(valid_x)
+    if epoch_end:
+        predicts = model.predict(valid_x)
 
-    #     for img_op in image_summary_ops:
-    #         image_summary = img_op(valid_x, valid_y, predicts)
+        for img_op in image_summary_ops:
+            image_summary = img_op(valid_x, valid_y, predicts)
 
-    #         summary.update_images(image_summary)
+            summary.update_images(image_summary)
 
-    # return summary
+    return summary
 
-
-def train_tf_data_op(model, data, i_epoch, i_batch, epoch_end, **kwargs):
-    def adapter(data, i_epoch, i_batch, epoch_end):
-        return K.get_session().run(data)
-
-    return _train_op(model, data, adapter, i_epoch, i_batch, epoch_end, **kwargs)
-
-
-def train_generator_data_op(model, data, i_epoch, i_batch, epoch_end, **kwargs):
-    def adapter(data, i_epoch, i_batch, epoch_end):
-        return next(data)
-
-    return _train_op(model, data, adapter, i_epoch, i_batch, epoch_end, **kwargs)
+train_tf_data_op = partial(_train_op, adapter=_tf_dataset_adapter)
+train_generator_data_op = partial(_train_op, adapter=_generator_adapter)
+valid_tf_data_op = partial(_valid_op, adapter=_tf_dataset_adapter)
+valid_generator_data_op = partial(_valid_op, adapter=_generator_adapter)
 
 
 def train_monitor(
@@ -110,6 +116,7 @@ def train_monitor(
     step_per_epoch=None,
     valid_data=None,
     valid_op=None,
+    valid_steps=None,
     logdir=None,
     restore=True,
     callbacks=[],
@@ -118,22 +125,25 @@ def train_monitor(
 ):
     # initialise variables
     training_history = cbks.BatchHistory()
+    monitor = cbks.Monitor(logdir, models, restore=restore)
     epochs = epochs or np.inf
     step_per_epoch = step_per_epoch or 1000
     total_step = epochs * step_per_epoch
-    i_epoch = init_epochs
-    callbacks.append(training_history)
-    if logdir:
-        callbacks.append(cbks.Monitor(logdir, models, restore=restore))
-        if restore:
-            i_epoch = max_epoch(logdir)
+    step_time = [0]
 
+    i_epoch = init_epochs
+    if restore and logdir:
+        i_epoch = max_epoch(logdir)
+    callbacks.append(training_history)
+    callbacks.append(monitor)
     all_cbks = cbks.CallbackList(callbacks)
     all_summaries = [_base_image_summary_op] + summary_ops
-    step_time = []
 
     # start training
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(coord=coord, sess=K.get_session())
     all_cbks.on_train_begin()
+    print("Training started from epoch: %d"%i_epoch)
     while i_epoch < epochs:
         all_cbks.on_epoch_begin(i_epoch)
 
@@ -149,21 +159,17 @@ def train_monitor(
                 train_data, 
                 i_epoch=i_epoch, 
                 i_batch=i_batch, 
-                epoch_end=step_per_epoch-i_batch == 1,
+                epoch_end=i_batch + 1 == step_per_epoch,
                 image_summary_ops=all_summaries,
                 training_history=training_history
             )
 
-            all_cbks.on_batch_end(i_batch, logs=batch_train_log)
-            batch_end_time = time.time()
-            step_time.append(batch_end_time - batch_start_time)
-            if len(step_time) > step_per_epoch:
-                step_time.pop(0)
-
+            # summary preparation
             avg_step_time = np.mean(step_time)
             estimate_finishing_time = (
                 total_step - current_step) * avg_step_time
-            batch_train_log.update_scalars({'avg_step_time': avg_step_time,})
+            batch_train_log.update_scalars({'status/avg_step_time': avg_step_time,})
+            all_cbks.on_batch_end(i_batch, logs=batch_train_log)
 
             # build batch summary
             logs = Summary({
@@ -175,13 +181,26 @@ def train_monitor(
             if verbose > 1:
                 print(str(logs))
             # ---------- batch end -------------
-        if valid_data is not None and valid_op is not None:
-            batch_valid_log = valid_op(
-                models, 
-                train_data,
-                image_summary_ops=all_summaries
-            )
-            logs.update(batch_valid_log)
+            batch_end_time = time.time()
+            step_time.append(batch_end_time - batch_start_time)
+            if len(step_time) > np.min([10, step_per_epoch]):
+                step_time.pop(0)
+        
+        # Run Validation if Provided
+        if valid_data is not None and valid_op is not None and valid_steps is not None:
+            
+            for valid_i_step in range(valid_steps):
+                batch_valid_log = valid_op(
+                    models, 
+                    valid_data,
+                    i_epoch=valid_i_step,
+                    i_batch=None,
+                    epoch_end=valid_i_step+1 == valid_steps,
+                    image_summary_ops=all_summaries
+                )
+                monitor.on_valid_batch(valid_i_step, logs=batch_valid_log)
+                
+            batch_train_log.update_images(batch_valid_log.images)
 
         if verbose:
             print_dynamic(str(logs))
@@ -189,5 +208,8 @@ def train_monitor(
         # ---------- epoch end -------------
         all_cbks.on_epoch_end(i_epoch, logs=batch_train_log)
         i_epoch += 1
+
+    coord.request_stop()
+    coord.join(threads)
 
     return training_history

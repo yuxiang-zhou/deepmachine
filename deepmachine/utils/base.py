@@ -9,8 +9,71 @@ from scipy.io import loadmat
 from menpo.image import Image
 from menpo.shape import PointCloud
 from menpo.transform import Translation, Scale
-
 from scipy.sparse import csr_matrix
+
+from ..base import keras
+
+
+class Summary(object):
+    def __init__(self, scalars=None, images=None):
+        self.scalars = OrderedDict()
+        self.images = OrderedDict()
+
+        if isinstance(scalars, Summary):
+            self.update(scalars)
+        else:
+            if scalars:
+                self.scalars.update(scalars)
+            
+            if images:
+                self.images.update(images)
+
+    def __str__(self, *args, **kwargs):
+        format_string = 'Dictionary Contents: \n'
+        for k, v in self.scalars.items():
+            if type(v) is str:
+                format_string += '  %s: %s\n'%(k, v)
+            else:
+                format_string += '  %s: %3.5f\n'%(k, v)
+        return format_string
+
+    def get(self, *args, **kwargs):
+        return self.scalars.get(*args, **kwargs)
+
+    def items(self, *args, **kwargs):
+        return self.scalars.items(*args, **kwargs)
+
+    def update_scalars(self, data):
+        self.scalars.update(data)
+
+    def update_images(self, data):
+        self.images.update(data)
+
+    def update(self, data):
+        if isinstance(data, Summary):
+            self.scalars.update(data.scalars)
+            self.images.update(data.images)
+        else:
+            self.scalars.update(data)
+
+
+class Sequence(keras.callbacks.Callback, keras.utils.Sequence):
+
+    def __init__(self):
+        self.current = 0
+        super().__init__()
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        data = self[self.current]
+        self.current = (self.current + 1) % len(self)
+        return data
+
+    def on_epoch_end(self, *args, **kwargs):
+        pass
+
 
 bodypose_matrix = csr_matrix((16, 16))
 
@@ -60,46 +123,3 @@ inner_mouth_indices = np.arange(60, 68)
 parts_68 = (jaw_indices, lbrow_indices, rbrow_indices, upper_nose_indices,
             lower_nose_indices, leye_indices, reye_indices,
             outer_mouth_indices, inner_mouth_indices)
-
-
-class Summary(object):
-    def __init__(self, scalars=None, images=None):
-        self.scalars = OrderedDict()
-        self.images = OrderedDict()
-
-        if isinstance(scalars, Summary):
-            self.update(scalars)
-        else:
-            if scalars:
-                self.scalars.update(scalars)
-            
-            if images:
-                self.images.update(images)
-
-    def __str__(self, *args, **kwargs):
-        format_string = 'Dictionary Contents: \n'
-        for k, v in self.scalars.items():
-            if type(v) is str:
-                format_string += '  %s: %s\n'%(k, v)
-            else:
-                format_string += '  %s: %3.5f\n'%(k, v)
-        return format_string
-
-    def get(self, *args, **kwargs):
-        return self.scalars.get(*args, **kwargs)
-
-    def items(self, *args, **kwargs):
-        return self.scalars.items(*args, **kwargs)
-
-    def update_scalars(self, data):
-        self.scalars.update(data)
-
-    def update_images(self, data):
-        self.images.update(data)
-
-    def update(self, data):
-        if isinstance(data, Summary):
-            self.scalars.update(data.scalars)
-            self.images.update(data.images)
-        else:
-            self.scalars.update(data)

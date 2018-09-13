@@ -1,84 +1,38 @@
 import tensorflow as tf
 import numpy as np
 from functools import partial
+from keras.models import Model
 from .. import layers
+from ..base import K
+from .module import conv2d, deconv2d, conv2dt, vae_sampling
 
 
-def _conv(inputs, conv_layer, *args, batch_norm=None, dropout=None, pre_conv=None, activation=True, **kwargs):
-
-    net = inputs
-
-    # pad coordinate
-    if pre_conv:
-        net = pre_conv()(net)
-
-    # convolution layer
-    net = conv_layer(*args, **kwargs)(net)
-
-    # rectifier
-    if activation:
-        if type(activation) is str:
-            net = layers.Activation(activation)(net)
-        else:
-            net = layers.LeakyReLU()(net)
-
-    # batch normalization
-    if batch_norm:
-        if type(batch_norm) is str:
-            net = getattr(layers, batch_norm)()(net)
-        else:
-            net = layers.BatchNormalization()(net)
-
-    # dropout layer
-    if dropout:
-        net = layers.Dropout(dropout)(net)
-
-    return net
-
-
-def conv2d(inputs, *args, use_coordconv=False, **kwargs):
-
-    if use_coordconv:
-        kwargs['pre_conv'] = layers.CoordinateChannel2D
-
-    return _conv(inputs, layers.Conv2D, *args, **kwargs)
-
-
-def deconv2d(inputs, *args, use_coordconv=False, size=2, **kwargs):
-
-    kwargs['pre_conv'] = partial(layers.UpSampling2D, size=size)
-
-    return _conv(inputs, layers.Conv2D, *args, **kwargs)
-
-
-def conv2dt(inputs, *args, batch_norm=None, use_coordconv=False, dropout=False, **kwargs):
-
-    if use_coordconv:
-        kwargs['pre_conv'] = layers.CoordinateChannel2D
-
-    return _conv(inputs, layers.Conv2DTranspose, *args, **kwargs)
-
-
-def ResiduleModule(inputs, out_channel, add_residule=False, kernel_initializer='glorot_uniform', **kwargs):
+def HGResiduleModule(inputs, out_channel, add_residule=True, kernel_initializer='glorot_uniform', **kwargs):
     net = inputs
     for ch, kernal in zip([out_channel // 2, out_channel // 2, out_channel], [1, 3, 1]):
         net = conv2d(
-            net,
-            ch, (kernal, kernal),
+            net, ch, kernal,
             strides=1,
             padding='same',
             kernel_initializer=kernel_initializer, **kwargs)
 
     if add_residule:
         res_net = conv2d(
-            inputs,
-            out_channel, (1, 1),
+            inputs, out_channel, 1,
             strides=1,
             padding='same',
             kernel_initializer=kernel_initializer, **kwargs)
         net = layers.Add()([net, res_net])
 
     return net
+
+
+def ResiduleModule(x, dim, ks=3, s=1, kernel_initializer='glorot_uniform', activation='relu', batch_norm='InstanceNormalization2D', **kwargs):
+    y = conv2d(x, dim, ks, strides=s, padding='same', activation=activation,
+               batch_norm=batch_norm, kernel_initializer=kernel_initializer, **kwargs)
+    y = conv2d(y, dim, ks, strides=s, padding='same', activation=None,
+               batch_norm=batch_norm, kernel_initializer=kernel_initializer, **kwargs)
+    return layers.Add()([y, x])
 
 
 def Encoding2D(inputs, out_channel, down_sample=True, module='Residule', add_residule=True, kernel_initializer='glorot_uniform', **kwargs):
@@ -97,22 +51,11 @@ def Encoding2D(inputs, out_channel, down_sample=True, module='Residule', add_res
     return net
 
 
-def Decoding2D(inputs, out_channel, kernel_initializer='glorot_uniform', **kwargs):
-    net = deconv2d(
-        inputs,
-        out_channel, (3, 3),
-        padding='same',
-        kernel_initializer=kernel_initializer, **kwargs)
-
-    return net
-
-
-def Hourglass(inputs, output_shape, depth=4, initial_channel=32, module='Residule', kernel_initializer='glorot_uniform', **kwargs):
+def Hourglass(inputs, output_shape, depth=4, initial_channel=32, module='HGResidule', kernel_initializer='glorot_uniform', **kwargs):
 
     net = inputs
     net = conv2d(
-        net,
-        initial_channel, (7, 7),
+        net, initial_channel, 7,
         strides=2,
         padding='same',
         batch_norm=None,
@@ -134,8 +77,9 @@ def Hourglass(inputs, output_shape, depth=4, initial_channel=32, module='Residul
 
     # up sampling
     for s, s_layer in zip(range(depth), skip_layers[::-1]):
-        net = Decoding2D(net, initial_channel * (depth-s),
-                         kernel_initializer=kernel_initializer, **kwargs)
+        net = deconv2d(
+            net, initial_channel * (depth-s), 3,
+            kernel_initializer=kernel_initializer, **kwargs)
         net = layers.Concatenate()([net, s_layer])
 
     # output regress
@@ -198,7 +142,9 @@ def Decoder2D(inputs, out_shape, depth=2, conv_channel=32, kernel_initializer='g
             strides=1,
             padding='same',
             kernel_initializer=kernel_initializer, **kwargs)
-        net = Decoding2D(net, conv_channel * (depth - s), **kwargs)
+        net = deconv2d(
+            net, conv_channel * (depth - s), 3,
+            kernel_initializer=kernel_initializer, **kwargs)
 
     net = conv2d(
         net,
@@ -225,3 +171,195 @@ def AutoEncoder(inputs, output_shape, depth=2, embedding=128, initial_channel=32
         embedding, output_shape, depth=depth, conv_channel=initial_channel, **kwargs)
 
     return reconstruction
+
+
+def UNet(inputs, output_shape, nf=64, ks=4, **kwargs):
+    ### UNet Definition ###
+    # image is (256 x 256 x input_c_dim)
+    e1 = conv2d(inputs, nf, ks, strides=2, padding='same',
+                activation=True, batch_norm='InstanceNormalization2D')
+    # e1 is (128 x 128 x self.gf_dim)
+    e2 = conv2d(e1, nf*2, ks, strides=2, padding='same',
+                activation=True, batch_norm='InstanceNormalization2D')
+    # e2 is (64 x 64 x self.gf_dim*2)
+    e3 = conv2d(e2, nf*4, ks, strides=2, padding='same',
+                activation=True, batch_norm='InstanceNormalization2D')
+    # e3 is (32 x 32 x self.gf_dim*4)
+    e4 = conv2d(e3, nf*8, ks, strides=2, padding='same',
+                activation=True, batch_norm='InstanceNormalization2D')
+    # e4 is (16 x 16 x self.gf_dim*8)
+    e5 = conv2d(e4, nf*8, ks, strides=2, padding='same',
+                activation=True, batch_norm='InstanceNormalization2D')
+    # e5 is (8 x 8 x self.gf_dim*8)
+    e6 = conv2d(e5, nf*8, ks, strides=2, padding='same',
+                activation=True, batch_norm='InstanceNormalization2D')
+    # e6 is (4 x 4 x self.gf_dim*8)
+    e7 = conv2d(e6, nf*8, ks, strides=2, padding='same',
+                activation=True, batch_norm='InstanceNormalization2D')
+    # e7 is (2 x 2 x self.gf_dim*8)
+    e8 = conv2d(e7, nf*8, ks, strides=2, padding='same',
+                activation=True, batch_norm='InstanceNormalization2D')
+    # e8 is (1 x 1 x self.gf_dim*8)
+
+    d1 = deconv2d(e8, nf*8, ks, padding='same',
+                  activation='relu', batch_norm='InstanceNormalization2D', dropout=0.5)
+    d1 = layers.Concatenate()([d1, e7])
+    # d1 is (2 x 2 x self.gf_dim*8*2)
+
+    d2 = deconv2d(d1, nf*8, ks, padding='same',
+                  activation='relu', batch_norm='InstanceNormalization2D', dropout=0.5)
+    d2 = layers.Concatenate()([d2, e6])
+    # d2 is (4 x 4 x self.gf_dim*8*2)
+
+    d3 = deconv2d(d2, nf*8, ks, padding='same',
+                  activation='relu', batch_norm='InstanceNormalization2D', dropout=0.5)
+    d3 = layers.Concatenate()([d3, e5])
+    # d3 is (8 x 8 x self.gf_dim*8*2)
+
+    d4 = deconv2d(
+        d3, nf*8, ks, padding='same', activation='relu', batch_norm='InstanceNormalization2D')
+    d4 = layers.Concatenate()([d4, e4])
+    # d4 is (16 x 16 x self.gf_dim*8*2)
+
+    d5 = deconv2d(
+        d4, nf*4, ks, padding='same', activation='relu', batch_norm='InstanceNormalization2D')
+    d5 = layers.Concatenate()([d5, e3])
+    # d5 is (32 x 32 x self.gf_dim*4*2)
+
+    d6 = deconv2d(
+        d5, nf*2, ks, padding='same', activation='relu', batch_norm='InstanceNormalization2D')
+    d6 = layers.Concatenate()([d6, e2])
+    # d6 is (64 x 64 x self.gf_dim*2*2)
+
+    d7 = deconv2d(
+        d6, nf, ks, padding='same', activation='relu', batch_norm='InstanceNormalization2D')
+    d7 = layers.Concatenate()([d7, e1])
+    # d7 is (128 x 128 x self.gf_dim*1*2)
+
+    outputs = deconv2d(
+        d7, 3, ks, padding='same', activation='tanh', batch_norm=None)
+    # outputs is (256 x 256 x output_c_dim)
+    return outputs
+
+
+def Discriminator(inputs, nf=64, depth=4, ks=4, **kwargs):
+    net = conv2d(
+        inputs,
+        nf,
+        ks,
+        strides=2,
+        padding='same',
+        batch_norm=None,
+        activation=True,
+    )
+    for i in range(depth - 1):
+        net = conv2d(
+            net,
+            nf * 2 ** (i+1),
+            ks,
+            strides=2 if i < depth - 2 else 1,
+            padding='same',
+            batch_norm='InstanceNormalization2D',
+            activation=True,
+            **kwargs
+        )
+
+    validity = conv2d(
+        net,
+        1,
+        1,
+        strides=1,
+        padding='same',
+        batch_norm=False,
+        activation=False,
+    )
+
+    return validity
+
+
+def ResNet50(inputs, output_shape, nf=64, n_residule=9, module='Residule', with_deconv=True, with_dense=False, embeding=256, n_classes=100, dropout=0.3, **kwargs):
+
+    module_fn = globals()['%sModule' % module] if type(
+        module) is str else module
+
+    # The network with 9 blocks consists of: c7s1-32, d64, d128, R128, R128, R128,
+    # R128, R128, R128, R128, R128, R128, u64, u32, c7s1-3
+    net = conv2d(inputs, nf, 7, strides=1, padding='same',
+                 activation='relu', batch_norm='InstanceNormalization2D', **kwargs)
+    net = conv2d(net, nf * 2, 3, strides=2, activation='relu',
+                 batch_norm='InstanceNormalization2D', **kwargs)
+    net = conv2d(net, nf * 4, 3, strides=2, activation='relu',
+                 batch_norm='InstanceNormalization2D', **kwargs)
+    # define G network with 9 resnet blocks
+    for _ in range(n_residule):
+        net = module_fn(net, nf*4, **kwargs)
+
+    if with_deconv:
+        net = conv2dt(net, nf*2, 3, strides=2, activation='relu',
+                      batch_norm='InstanceNormalization2D', **kwargs)
+        net = conv2dt(net, nf, 3, strides=2, activation='relu',
+                      batch_norm='InstanceNormalization2D', **kwargs)
+        net = conv2d(net, output_shape[-1], 7, strides=1,
+                     padding='same', activation='tanh', batch_norm=None, **kwargs)
+    elif with_dense:
+        net = layers.Flatten()(net)
+        net = layers.Dense(embeding, activation='relu')(net)
+        net = layers.Dropput(dropout)(net)
+        net = layers.Dense(n_classes, activation='softmax')(net)
+
+    return net
+
+
+def VAE(inputs, nf=32, ks=3, depth=2, embedding=64, latent=16, return_models=False, *args, **kwargs):
+    # VAE model = encoder + decoder
+    # build encoder model
+    output_shape = K.int_shape(inputs)
+
+    x = inputs
+    for i in range(depth):
+        x = conv2d(x, nf * (2**i), ks, strides=2,
+                   activation='relu', *args, **kwargs)
+
+    # shape info needed to build decoder model
+    embedding_shape = K.int_shape(x)
+
+    # generate latent vector Q(z|X)
+    x = layers.Flatten()(x)
+    x = layers.Dense(embedding, activation='relu')(x)
+    z_mean = layers.Dense(latent, name='z_mean')(x)
+    z_log_var = layers.Dense(latent, name='z_log_var')(x)
+
+    # use reparameterization trick to push the sampling out as input
+    # note that "output_shape" isn't necessary with the TensorFlow backend
+
+    z = layers.Lambda(vae_sampling, output_shape=(
+        latent,), name='z')([z_mean, z_log_var])
+
+    # instantiate encoder model
+    encoder = Model(
+        inputs,
+        [z_mean, z_log_var, z],
+        name='encoder')
+
+    # build decoder model
+    latent_inputs = layers.Input(shape=(latent,), name='z_sampling')
+    x = layers.Dense(embedding_shape[1] * embedding_shape[2]
+                     * embedding_shape[3], activation='relu')(latent_inputs)
+    x = layers.Reshape(
+        (embedding_shape[1], embedding_shape[2], embedding_shape[3]))(x)
+
+    for i in range(depth-1, -1, -1):
+        x = deconv2d(x, nf*2**i, ks, strides=1, size=2,
+                     activation='relu', *args, **kwargs)
+
+    recon = conv2d(x, output_shape[-1], ks,
+                   strides=1, activation=None, *args, **kwargs)
+
+    # instantiate decoder model
+    decoder = Model(latent_inputs, recon, name='decoder')
+
+    # instantiate VAE model
+    outputs = decoder(encoder(inputs)[-1])
+    if return_models:
+        return outputs, [encoder, decoder]
+    return outputs

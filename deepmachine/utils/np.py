@@ -408,9 +408,8 @@ def iuv_rgb(iuv, colour_set='jet'):
     return (u.dot(colours) / 255. + v.dot(colours) / 255.) / 2.
 
 
-def one_hot(a):
+def one_hot(a, n_parts):
     a = a.astype(np.int32)
-    n_parts = np.max(a) + 1
     b = np.zeros((len(a), n_parts))
     b[np.arange(len(a)), a] = 1
     return b
@@ -420,7 +419,7 @@ def rgb_iuv(rgb):
     # formation
     iuv_mask = rgb[..., 0]
     n_parts = int(np.max(iuv_mask) + 1)
-    iuv_one_hot = one_hot(iuv_mask.flatten()).reshape(
+    iuv_one_hot = one_hot(iuv_mask.flatten(), n_parts).reshape(
         iuv_mask.shape + (n_parts,))
 
     # normalised uv

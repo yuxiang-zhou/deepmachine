@@ -17,21 +17,23 @@ class TFRecordBuilder(object):
         for data in iterator:
             # build feature
             feature = {}
+            try:
+                for op in self._feature_builder:
+                    f = op(data)
+                    for k in f:
+                        feature[k] = f[k]
 
-            for op in self._feature_builder:
-                f = op(data)
-                for k in f:
-                    feature[k] = f[k]
+                # construct the Example proto boject
+                example = tf.train.Example(
+                    features=tf.train.Features(feature=feature)
+                )
 
-            # construct the Example proto boject
-            example = tf.train.Example(
-                features=tf.train.Features(feature=feature)
-            )
-
-            # use the proto object to serialize the example to a string
-            serialized = example.SerializeToString()
-
-            # write the serialized object to disk
-            writer.write(serialized)
+                # use the proto object to serialize the example to a string
+                serialized = example.SerializeToString()
+    
+                # write the serialized object to disk
+                writer.write(serialized)
+            except:
+                pass
 
         writer.close()

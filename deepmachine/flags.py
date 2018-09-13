@@ -18,11 +18,16 @@ tf.app.flags.DEFINE_string('logdir', None,
 tf.app.flags.DEFINE_integer('batch_size', 32,
                     '''Batch Size''')
 
-tf.app.flags.DEFINE_integer('verbose', 1,
+tf.app.flags.DEFINE_integer('verbose', 2,
                     '''Stdout infomation details''')
+
+tf.app.flags.DEFINE_integer('no_thread', 4,
+                    '''Number of data reading threads''')
                     
 tf.app.flags.DEFINE_float('lr', 2e-4,
                     '''Learning rate''')
+tf.app.flags.DEFINE_float('lr_decay', 1,
+                    '''Learning rate decay = learning_rate * lr_decay ** epoch''')
 
 tf.app.flags.mark_flags_as_required([
     'dataset_path', 'logdir'

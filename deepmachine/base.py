@@ -1,7 +1,10 @@
 import keras
 import tensorflow as tf
 import numpy as np
+import menpo.io as mio
 
+from menpo.image import Image
+from menpo.shape import PointCloud
 from keras import backend as K
 from pathlib import Path
 from . import callbacks as cbks
@@ -29,7 +32,7 @@ def _undefined_op(*args, **kwargs):
 
 
 class DeepMachine(keras.Model):
-    def __init__(self, network=None, network_config=None, ckpt_path=None, *args, **kwargs):
+    def __init__(self, network=None, network_config=None, *args, **kwargs):
         # build model from network
         if network:
             if isinstance(network, keras.Model):
@@ -57,20 +60,59 @@ class DeepMachine(keras.Model):
         if type(kwargs['outputs']) is not list:
             kwargs['outputs'] = [kwargs['outputs']]
 
-        self.ckpt_path = ckpt_path
-
         super().__init__(*args, **kwargs)
 
-    def _prepare_training(self, *args, lr_decay=1, callbacks=[], **kwargs):
+    def _config_sequence_data(
+        self,
+        sequence_data,
+        is_training=True,
+        use_multiprocessing=True,
+        workers=4,
+        max_queue_size=256,
+        **kwargs
+    ):
+        queue_data = utils.enqueue_generator(
+            sequence_data,
+            use_multiprocessing=use_multiprocessing,
+            workers=workers,
+            max_queue_size=max_queue_size)
+
+        return queue_data, kwargs
+
+    def _prepare_training(self, train_data, lr_decay=1, callbacks=[], valid_data=None, **kwargs):
+        # train_data,
         # train_op=train_generator_data_op,
-        # valid_data=None,
-        # valid_op=None,
         # epochs=None,
         # init_epochs=0,
         # step_per_epoch=None,
+        # valid_data=None,
+        # valid_op=None,
+        # valid_steps=None,
         # logdir=None,
+        # restore=True,
         # callbacks=[],
+        # summary_ops=[],
         # verbose=1,
+
+        if isinstance(train_data, utils.Sequence):
+            kwargs['train_op'] = kwargs['train_op'] or engine.training.train_generator_data_op
+            kwargs['step_per_epoch'] = kwargs['step_per_epoch'] or len(train_data)
+            train_data, kwargs = self._config_sequence_data(
+                train_data, **kwargs)
+        else:
+            kwargs['train_op'] = kwargs['train_op'] or engine.training.train_tf_data_op
+
+        
+        if valid_data:
+            if isinstance(valid_data , utils.Sequence):
+                kwargs['valid_op'] = kwargs['valid_op'] or engine.training.valid_generator_data_op
+                kwargs['valid_steps'] = kwargs['valid_steps'] or len(valid_data)
+                valid_data, kwargs = self._config_sequence_data(valid_data, is_training=True, **kwargs)
+            else:
+                kwargs['valid_op'] = kwargs['valid_op'] or engine.training.valid_tf_data_op
+                kwargs['valid_steps'] = kwargs['valid_steps'] or 10
+
+            kwargs['valid_data'] = valid_data
 
         if lr_decay > 0:
             initial_lr = self.optimizer.lr.eval(K.get_session())
@@ -81,39 +123,84 @@ class DeepMachine(keras.Model):
 
         kwargs['callbacks'] = callbacks
 
-        return args, kwargs
+        return train_data, kwargs
 
-    def fit_generator(self, data_generator, *args, use_multiprocessing=False, workers=4, max_queue_size=256, **kwargs):
+    def fit(self,
+            train_data,
+            train_op=None,
+            epochs=None,
+            init_epochs=0,
+            step_per_epoch=None,
+            valid_data=None,
+            valid_op=None,
+            valid_steps=None,
+            logdir=None,
+            restore=True,
+            lr_decay=1,
+            callbacks=[],
+            summary_ops=[],
+            verbose=1,
+            **kwargs
+            ):
 
-        args, kwargs = self._prepare_training(*args, **kwargs)
-
-        # prepare generator
-        kwargs['callbacks'].append(data_generator)
-
-        output_generator = utils.enqueue_generator(
-            data_generator, use_multiprocessing=use_multiprocessing, workers=workers, max_queue_size=max_queue_size)
-
-        # start training
-        history = engine.training.train_monitor(
-            self,
-            output_generator,
-            engine.training.train_generator_data_op,
-            *args,
+        data, kwargs = self._prepare_training(
+            train_data,
+            train_op=train_op,
+            epochs=epochs,
+            init_epochs=init_epochs,
+            step_per_epoch=step_per_epoch,
+            valid_data=valid_data,
+            valid_op=valid_op,
+            valid_steps=valid_steps,
+            logdir=logdir,
+            restore=restore,
+            lr_decay=lr_decay,
+            callbacks=callbacks,
+            summary_ops=summary_ops,
+            verbose=verbose,
             **kwargs
         )
 
-        return history
-
-    def fit_tf_data(self, tf_dataset, *args, **kwargs):
-
-        args, kwargs = self._prepare_training(*args, **kwargs)
-
-        history = engine.training.train_monitor(
-            self,
-            tf_dataset,
-            engine.training.train_tf_data_op,
-            *args,
-            **kwargs
-        )
+        history = engine.training.train_monitor(self, data, **kwargs)
 
         return history
+
+    # def fit_generator(self, data_generator, *args, use_multiprocessing=True, valid_data=None, workers=4, max_queue_size=256, **kwargs):
+
+    #     args, kwargs = self._prepare_training(*args, **kwargs)
+
+    #     # prepare generator
+    #     kwargs['callbacks'].append(data_generator)
+
+    #     output_generator = utils.enqueue_generator(
+    #         data_generator, use_multiprocessing=use_multiprocessing, workers=workers, max_queue_size=max_queue_size)
+
+    #     if valid_data:
+    #         valid_data = utils.enqueue_generator(
+    #             valid_data, use_multiprocessing=True, workers=2, max_queue_size=len(valid_data))
+
+    #     # start training
+    #     history = engine.training.train_monitor(
+    #         self,
+    #         output_generator,
+    #         engine.training.train_generator_data_op,
+    #         *args,
+    #         valid_data=valid_data,
+    #         **kwargs
+    #     )
+
+    #     return history
+
+    # def fit_tf_data(self, tf_dataset, *args, **kwargs):
+
+    #     args, kwargs = self._prepare_training(*args, **kwargs)
+
+    #     history = engine.training.train_monitor(
+    #         self,
+    #         tf_dataset,
+    #         engine.training.train_tf_data_op,
+    #         *args,
+    #         **kwargs
+    #     )
+
+    #     return history

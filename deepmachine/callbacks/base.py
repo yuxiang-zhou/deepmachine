@@ -63,11 +63,13 @@ def summary_image_batch(data, shape=None, name='image_batch', col_size=4):
 
 class Monitor(keras.callbacks.Callback):
 
-    def __init__(self, logdir, models=None, restore=True, *args, **kwargs):
+    def __init__(self, logdir=None, models=None, restore=True, *args, **kwargs):
         self.logdir = logdir
-        self.writer = tf.summary.FileWriter(logdir,  K.get_session().graph)
+        self.writer = tf.summary.FileWriter(logdir,  K.get_session().graph) if logdir else None
         self.models = models
         self.restore = restore
+        self.history = {}
+        self.valid_history = {}
 
     def _standarize_images(self, images):
         if images.min() < 0:
@@ -116,33 +118,73 @@ class Monitor(keras.callbacks.Callback):
                                                      simple_value=value)])
         self.writer.add_summary(summary, step)
 
+
+    def on_valid_batch(self, batch, logs=None):
+        logs = logs or {}
+        for k, v in logs.items():
+            self.valid_history.setdefault(k, []).append(v)
+    
+    def on_batch_end(self, batch, logs=None):
+        logs = logs or {}
+        for k, v in logs.items():
+            self.history.setdefault(k, []).append(v)
+
+    def on_epoch_begin(self, epoch, logs = None):
+        self.history = {}
+
     def on_epoch_end(self, epoch, logs=None):
         logs = utils.Summary(logs)
 
-        for name, value in logs.scalars.items():
-            if type(value) is not str:
-                self.log_scalar(name, value, epoch)
+        # save smmaries to logdir
+        if self.writer is not None:
+            
+            # save traing summaries
+            for name, value in self.history.items():
+                if type(value) is not str:
+                    self.log_scalar('train/' + name, np.mean(value), epoch)
 
-        for name, value in logs.images.items():
-            self.log_images(name, value, epoch)
+            # save validation summaries
+            for name, value in self.valid_history.items():
+                if type(value) is not str:
+                    self.log_scalar('valid/' + name, np.mean(value), epoch)
 
-        self.writer.flush()
+            # save visualisations
+            for name, value in logs.images.items():
+                self.log_images('train/' + name, value, epoch)
+
+
+            self.writer.flush()
+
+        # save weights
+        for m in self.models:
+            if m:
+                m.save('{}/{}-weights.{:05d}.hdf5'.format(
+                    self.logdir,
+                    m.name, epoch), include_optimizer=False)
 
         super().on_epoch_end(epoch, logs=logs)
 
     def on_train_begin(self, logs=None):
-        self.writer.reopen()
-
         if not isinstance(self.models, collections.Iterable):
             self.models = [self.models]
 
+        # print summaries
+        for m in self.models:
+            if m:
+                m.summary()
+
+        # restore weights
         init_epoch = utils.max_epoch(self.logdir)
         if self.restore and init_epoch > 0:
+            print('Restoring Previous Checkpoints with epoch: {}...'.format(init_epoch))
             for m in self.models:
                 if m:
                     m.load_weights('{}/{}-weights.{:05d}.hdf5'.format(
                         self.logdir,
                         m.name, init_epoch))
+
+        if self.writer is not None:
+            self.writer.reopen()
 
         super().on_train_begin(logs)
 

@@ -15,6 +15,13 @@ iuv_feature = {
     'iuv_height': tf.FixedLenFeature([], tf.int64),
     'iuv_width': tf.FixedLenFeature([], tf.int64),
 }
+uvxyz_feature = {
+    # iuv
+    'uvxyz': tf.FixedLenFeature([], tf.string),
+    'uvxyz/mask': tf.FixedLenFeature([], tf.string),
+    'uvxyz/height': tf.FixedLenFeature([], tf.int64),
+    'uvxyz/width': tf.FixedLenFeature([], tf.int64),
+}
 
 svs_feature = {
     # svs

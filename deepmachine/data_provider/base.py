@@ -123,6 +123,7 @@ class TFRecordNoFlipProvider(TFRecordProvider):
     def _random_augmentation(self):
         return super()._random_augmentation() - tf.constant([1., 0., 0., 0., 0.])
 
+
 class TFRecordBBoxProvider(TFRecordProvider):
     def _random_augmentation(self):
         return tf.concat(
@@ -273,6 +274,54 @@ class DatasetMixer(Provider):
         return ret_dict
 
 
+class DatasetQueue(Provider):
+    def __init__(self,
+                 provider,
+                 n_proccess=4,
+                 batch_size=1):
+        self.provider = provider
+        self.batch_size = batch_size
+        self.n_proccess = n_proccess
+        self._count = None
+
+    def size(self):
+        if self._count is None:
+            self._count = self.provider.size()
+
+        return self._count
+
+    def get(self, *keys):
+
+        tensor_dict = self.provider.get(*keys)
+        tensors = [tensor_dict[k] for k in keys]
+        dtypes = [x.dtype for x in tensors]
+        shapes = [x.get_shape() for x in tensors]
+        queue = tf.FIFOQueue(
+            capacity=self.batch_size * 10 * self.n_proccess,
+            dtypes=dtypes, name='fifoqueue')
+
+        qr = tf.train.QueueRunner(
+            queue, [queue.enqueue_many(tensors)] * self.n_proccess)
+        tf.train.add_queue_runner(qr)
+
+        tensors_dequeue = queue.dequeue()
+
+        for t, s in zip(tensors_dequeue, shapes):
+            t.set_shape(s[1:])
+
+        ret_val = tf.train.batch(
+            tensors_dequeue,
+            self.batch_size,
+            num_threads=1,
+            enqueue_many=False,
+            dynamic_pad=True,
+            capacity=200)
+
+        ret_dict = {k: v for k, v in zip(keys, ret_val)}
+
+        return ret_dict
+
+
 class DatasetPairer(Provider):
     def __init__(self,
                  providers,
@@ -289,7 +338,7 @@ class DatasetPairer(Provider):
         return self._count
 
     def get(self, *keys):
-        
+
         tensors_all = []
         n_providers = len(self.providers)
         n_keys = len(keys)

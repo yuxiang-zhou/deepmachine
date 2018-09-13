@@ -92,6 +92,19 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
 
     return image
 
+def uvxyz_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), dtype=tf.float32):
+    # load features
+    height = tf.to_int32(features['uvxyz/height'])
+    width = tf.to_int32(features['uvxyz/width'])
+
+    uvxyz = tf.decode_raw(features['uvxyz'], dtype)
+    uvxyz = tf.reshape(uvxyz, [height, width, -1])
+    uvxyz_mask = tf.image.decode_jpeg(features['uvxyz/mask'], channels=1)
+    
+    # shape defination
+    uvxyz.set_shape([256, 256, 3])
+    return uvxyz
+
 
 def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), n_lms=16, flip_transformation=None):
     if flip_transformation is None:

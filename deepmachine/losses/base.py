@@ -1,5 +1,6 @@
 import tensorflow as tf
 import keras
+import keras.backend as K
 from keras.utils import get_custom_objects
 from . import helper
 from .. import utils
@@ -45,7 +46,15 @@ def loss_iuv_regression(y_true, y_pred):
     return celoss + l1smooth_U + l1smooth_V
 
 
+def loss_kl(z_mean, z_log_var):
+    kl_loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
+    kl_loss = K.sum(kl_loss, axis=-1)
+    kl_loss *= -0.5
+    return kl_loss
+
+
 get_custom_objects().update({
     'loss_heatmap_regression': loss_heatmap_regression,
     'loss_iuv_regression': loss_iuv_regression,
+    'loss_kl': loss_kl
 })
