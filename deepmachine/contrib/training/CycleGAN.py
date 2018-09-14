@@ -126,7 +126,7 @@ def main():
             # unet
             # outputs = dm.networks.UNet(inputs, [INPUT_SHAPE, INPUT_SHAPE, 3], nf=nf, ks=ks)
             # resnet
-            outputs = dm.networks.ResNet50(inputs, [INPUT_SHAPE, INPUT_SHAPE, 3], nf=nf, use_coordconv=True)
+            outputs = dm.networks.ResNet50(inputs, [INPUT_SHAPE, INPUT_SHAPE, 3], nf=nf)
             return dm.Model(inputs, outputs, name=name)
 
         def build_discriminator(nf=DISCRIMINATOR_CH, depth=DEPTH, ks=4):

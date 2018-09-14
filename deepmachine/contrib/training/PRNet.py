@@ -32,6 +32,8 @@ def main():
     LOGDIR = "{}/model_{}".format(FLAGS.logdir, time.time()
                                   ) if 'model_' not in FLAGS.logdir else FLAGS.logdir
 
+    weight_mask = np.load('/vol/phoebe/yz4009/notebooks/Projects/MLProjects/data/face_uv_weight_mask.npy')[None,...,None]
+
     # Dataset
 
     def build_data():
@@ -63,10 +65,17 @@ def main():
         train_model = dm.DeepMachine(
             inputs=input_image, outputs=[
                 uvxyz_prediction])
+
+        def weighted_uv_loss(y_true, y_pred):
+
+            loss = dm.K.mean(weight_mask * dm.K.abs(y_true - y_pred))
+
+            return loss
+
         train_model.compile(
             optimizer=dm.optimizers.Adam(lr=LR),
             loss=[
-                'mae'
+                weighted_uv_loss
             ],
         )
 
