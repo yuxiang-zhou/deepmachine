@@ -33,9 +33,9 @@ def loss_iuv_regression(y_true, y_pred):
     uv_gt = y_true[..., n_feature:]  # 52 channels
 
     weight_hm = uv_gt_idx * 100
-    l1smooth_U = tf.losses.mean_squared_error(
+    l1smooth_U = helper.smooth_l1(
         uv_pred[..., :n_feature], uv_gt[..., :n_feature], weights=weight_hm)
-    l1smooth_V = tf.losses.mean_squared_error(
+    l1smooth_V = helper.smooth_l1(
         uv_pred[..., n_feature:], uv_gt[..., n_feature:], weights=weight_hm)
 
     # losses summaries

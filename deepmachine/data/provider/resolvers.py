@@ -12,10 +12,9 @@ from menpo.shape import PointCloud
 from menpo.transform import Translation
 
 import sys
-from .. import utils
+from ... import utils
 
 ResizeMethod = tf.image.ResizeMethod
-slim = tf.contrib.slim
 
 
 def dummy_resolver(_, *args, **kwargs):
@@ -49,8 +48,7 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
-            _ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -128,8 +126,7 @@ def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
-            _ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -229,8 +226,7 @@ def iuv_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
     # augmentation
 
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
-            _ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -289,8 +285,7 @@ def image_file_resolver(content, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
-            _ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -373,8 +368,7 @@ def image_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
-            _ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)
@@ -460,8 +454,7 @@ def heatmap_bbox_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0,
 
     # augmentation
     if aug:
-        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset, * \
-            _ = tf.unstack(aug_args)
+        do_flip, do_rotate, do_scale, h_aug_offset, w_aug_offset = tf.unstack(aug_args)
 
         # scale
         image_height = tf.to_int32(tf.to_float(image_height) * do_scale)

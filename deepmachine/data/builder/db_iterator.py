@@ -7,7 +7,7 @@ from menpo.visualize import print_dynamic, print_progress
 from menpo.shape import PointCloud
 from menpo.image import Image
 
-from .. import utils
+from ... import utils
 
 
 def mpii_iterator(is_training, base=384, full_joint=False):

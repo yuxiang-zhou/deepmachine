@@ -15,19 +15,19 @@ def get_jpg_string(im):
     return fp.read()
 
 
-def _int_feauture(value):
+def int_feauture(value):
     if type(value) is not list:
         value = [value]
     return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
 
 
-def _bytes_feauture(value):
+def bytes_feauture(value):
     if type(value) is not list:
         value = [value]
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=value))
 
 
-def _float_feauture(value):
+def float_feauture(value):
     if type(value) is not list:
         value = [value]
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
@@ -37,19 +37,19 @@ def image_builder(data):
     image = data['image']
 
     return {
-        'image': _bytes_feauture(get_jpg_string(image)),
-        'height': _int_feauture(image.shape[0]),
-        'width': _int_feauture(image.shape[1])
+        'image': bytes_feauture(get_jpg_string(image)),
+        'height': int_feauture(image.shape[0]),
+        'width': int_feauture(image.shape[1])
     }
 
 def uvxyz_builder(data):
     image = data['uvxyz']
     mask = data['uvxyz/mask']
     return {
-        'uvxyz': _bytes_feauture(image.pixels_with_channels_at_back().astype(np.float32).tobytes()),
-        'uvxyz/mask': _bytes_feauture(get_jpg_string(mask)),
-        'uvxyz/height': _int_feauture(image.shape[0]),
-        'uvxyz/width': _int_feauture(image.shape[1])
+        'uvxyz': bytes_feauture(image.pixels_with_channels_at_back().astype(np.float32).tobytes()),
+        'uvxyz/mask': bytes_feauture(get_jpg_string(mask)),
+        'uvxyz/height': int_feauture(image.shape[0]),
+        'uvxyz/width': int_feauture(image.shape[1])
     }
 
 def relative_landmark_builder(data):
@@ -57,10 +57,10 @@ def relative_landmark_builder(data):
     marked_index = data['marked_index']
     landmarks = data['rlms']
     return {
-        'n_landmarks': _int_feauture(landmarks.shape[0]),
-        'rlms': _bytes_feauture(landmarks.astype(np.float32).tobytes()),
-        'visible': _bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
-        'marked': _bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
+        'n_landmarks': int_feauture(landmarks.shape[0]),
+        'rlms': bytes_feauture(landmarks.astype(np.float32).tobytes()),
+        'visible': bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
+        'marked': bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
     }
 
 
@@ -71,20 +71,20 @@ def landmark_builder(data, visible_label=None, marked_label=None):
         landmarks = landmarks.points
         
     results = {
-        'n_landmarks': _int_feauture(landmarks.shape[0]),
-        'gt': _bytes_feauture(landmarks.astype(np.float32).tobytes()),
+        'n_landmarks': int_feauture(landmarks.shape[0]),
+        'gt': bytes_feauture(landmarks.astype(np.float32).tobytes()),
     }
 
     if visible_label:
         visible_pts = data[visible_label]
         results.update({
-            'visible': _bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
+            'visible': bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
         })
 
     if marked_label:
         marked_index = data[marked_label]
         results.update({
-            'marked': _bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
+            'marked': bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
         })
 
     return results
@@ -93,7 +93,7 @@ def iuv_builder(data):
     image = data['iuv']
 
     return {
-        'iuv': _bytes_feauture(image.pixels_with_channels_at_back().astype(np.float32).tobytes()),
-        'iuv_height': _int_feauture(image.shape[0]),
-        'iuv_width': _int_feauture(image.shape[1])
+        'iuv': bytes_feauture(image.pixels_with_channels_at_back().astype(np.float32).tobytes()),
+        'iuv_height': int_feauture(image.shape[0]),
+        'iuv_width': int_feauture(image.shape[1])
     }

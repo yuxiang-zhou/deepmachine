@@ -1,3 +1,4 @@
+# basic library
 import os
 import shutil
 import math
@@ -5,21 +6,16 @@ import time
 import menpo.io as mio
 import menpo3d.io as m3io
 import numpy as np
-import deepmachine as dm
-import tensorflow as tf
-import keras
-
 from pathlib import Path
 from functools import partial
+
+# deepmachine
+import keras
+import tensorflow as tf
+import deepmachine as dm
+
+# flag definitions
 from deepmachine.flags import FLAGS
-from deepmachine import data_provider
-from menpo.shape import PointCloud, TriMesh, ColouredTriMesh, PointUndirectedGraph
-from menpo.visualize import print_progress
-from menpo.image import Image
-from menpo.transform import Translation
-from menpo3d.camera import PerspectiveCamera
-from menpo3d.unwrap import optimal_cylindrical_unwrap
-from menpo3d.rasterize import rasterize_mesh
 
 
 def main():
@@ -36,17 +32,17 @@ def main():
 
     def build_data():
 
-        dataset = data_provider.TFRecordNoFlipProvider(
+        dataset = dm.data.provider.TFRecordNoFlipProvider(
             DATA_PATH,
-            data_provider.features.FeatureIUVHM,
+            dm.data.provider.features.FeatureIUVHM,
             augmentation=True,
             resolvers={
-                'images': data_provider.resolvers.image_resolver,
-                'iuvs': partial(data_provider.resolvers.iuv_resolver, n_parts=25, dtype=tf.float32),
-                'heatmaps': partial(data_provider.resolvers.heatmap_resolver, n_lms=17),
+                'images': dm.data.provider.resolvers.image_resolver,
+                'iuvs': partial(dm.data.provider.resolvers.iuv_resolver, n_parts=25, dtype=tf.float32),
+                'heatmaps': partial(dm.data.provider.resolvers.heatmap_resolver, n_lms=17),
             }
         )
-        dataset = data_provider.DatasetQueue(
+        dataset = dm.data.provider.DatasetQueue(
             dataset, n_proccess=FLAGS.no_thread, batch_size=BATCH_SIZE)
         tf_data = dataset.get('images', 'iuvs', 'heatmaps')
 
@@ -55,20 +51,20 @@ def main():
     def model_builder():
         input_image = dm.layers.Input(
             shape=[INPUT_SHAPE, INPUT_SHAPE, 3], name='input_image')
-        iuv_prediction = dm.networks.ResNet50(
-            input_image, [256, 256, 75], use_coordconv=False)
+        iuv_prediction = dm.networks.Hourglass(
+            input_image, [256, 256, 75], nf=64, batch_norm='InstanceNormalization2D')
 
-        hm_prediction = dm.networks.ResNet50(
-            input_image, [256, 256, 17], use_coordconv=False)
+        hm_prediction = dm.networks.Hourglass(
+            input_image, [256, 256, 17], nf=64, batch_norm='InstanceNormalization2D')
 
         merged_inputs = dm.layers.Concatenate()(
             [input_image, hm_prediction, iuv_prediction])
 
-        iuv_prediction_refine = dm.networks.ResNet50(
-            merged_inputs, [256, 256, 75], nf=32, use_coordconv=False)
+        iuv_prediction_refine = dm.networks.Hourglass(
+            merged_inputs, [256, 256, 75], nf=64, batch_norm='InstanceNormalization2D')
 
-        hm_prediction_refine = dm.networks.ResNet50(
-            merged_inputs, [256, 256, 17], nf=32, use_coordconv=False)
+        hm_prediction_refine = dm.networks.Hourglass(
+            merged_inputs, [256, 256, 17], nf=64, batch_norm='InstanceNormalization2D')
 
         train_model = dm.DeepMachine(
             inputs=input_image, outputs=[
@@ -81,7 +77,8 @@ def main():
                 dm.losses.loss_heatmap_regression,
                 dm.losses.loss_iuv_regression,
                 dm.losses.loss_heatmap_regression
-            ]
+            ],
+            loss_weights=[1,1,1,1]
         )
 
         return train_model
@@ -91,8 +88,10 @@ def main():
         return {
             'target/iuv': np.array(list(map(dm.utils.iuv_rgb, train_y[0]))),
             'target/heatmap': np.array(list(map(dm.utils.channels_to_rgb, train_y[1]))),
-            'output/iuv': np.array(list(map(dm.utils.iuv_rgb, predict_y[2]))),
-            'output/heatmap': np.array(list(map(dm.utils.channels_to_rgb, predict_y[3]))),
+            'output/iuv_0': np.array(list(map(dm.utils.iuv_rgb, predict_y[0]))),
+            'output/iuv_1': np.array(list(map(dm.utils.iuv_rgb, predict_y[2]))),
+            'output/heatmap_0': np.array(list(map(dm.utils.channels_to_rgb, predict_y[1]))),
+            'output/heatmap_1': np.array(list(map(dm.utils.channels_to_rgb, predict_y[3]))),
         }
 
     # ### Training
@@ -103,7 +102,7 @@ def main():
         logdir=LOGDIR,
         verbose=2,
         summary_ops=[summary_op],
-        lr_decay=0.99
+        lr_decay=0.98
     )
 
 

@@ -7,8 +7,6 @@ import matplotlib.pyplot as plt
 from keras import backend as K
 from io import BytesIO
 
-slim = tf.contrib.slim
-
 from .. import utils
 
 
@@ -85,24 +83,27 @@ class Monitor(keras.callbacks.Callback):
 
     def log_images(self, tag, images, step, max_images=4):
         """Logs a list of images."""
-        images = self._standarize_images(images)
-        im_summaries = []
-        for nr, img in enumerate(images[:max_images]):
-            # Write the image to a string
-            s = BytesIO()
-            plt.imsave(s, img, format='png')
+        try:
+            images = self._standarize_images(images)
+            im_summaries = []
+            for nr, img in enumerate(images[:max_images]):
+                # Write the image to a string
+                s = BytesIO()
+                plt.imsave(s, img, format='png')
 
-            # Create an Image object
-            img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(),
-                                       height=img.shape[0],
-                                       width=img.shape[1])
-            # Create a Summary value
-            im_summaries.append(tf.Summary.Value(tag='%s/%d' % (tag, nr),
-                                                 image=img_sum))
+                # Create an Image object
+                img_sum = tf.Summary.Image(encoded_image_string=s.getvalue(),
+                                        height=img.shape[0],
+                                        width=img.shape[1])
+                # Create a Summary value
+                im_summaries.append(tf.Summary.Value(tag='%s/%d' % (tag, nr),
+                                                    image=img_sum))
 
-        # Create and write Summary
-        summary = tf.Summary(value=im_summaries)
-        self.writer.add_summary(summary, step)
+            # Create and write Summary
+            summary = tf.Summary(value=im_summaries)
+            self.writer.add_summary(summary, step)
+        except Exception as e:
+            print('Error loging images with tag: %s'%tag)
 
     def log_scalar(self, tag, value, step):
         """Log a scalar variable.
@@ -118,7 +119,6 @@ class Monitor(keras.callbacks.Callback):
                                                      simple_value=value)])
         self.writer.add_summary(summary, step)
 
-
     def on_valid_batch(self, batch, logs=None):
         logs = logs or {}
         for k, v in logs.items():
@@ -132,6 +132,17 @@ class Monitor(keras.callbacks.Callback):
     def on_epoch_begin(self, epoch, logs = None):
         self.history = {}
 
+    def _log_histories_epoch(self, items, epoch, prefix='train'):
+        for name, value in items:
+            if type(value) is not str:
+                self.log_scalar('epoch/%s/'%prefix + name, np.nanmean(value), epoch)
+                # batchwise summary
+                epoch_size = len(value)
+                n_log = np.min([100, epoch_size])
+                batch_indexes = np.linspace(0, epoch_size - 1, n_log).astype(int)
+                for b in batch_indexes:
+                    self.log_scalar('batch/%s/'%prefix + name, value[b], epoch * epoch_size + b)
+
     def on_epoch_end(self, epoch, logs=None):
         logs = utils.Summary(logs)
 
@@ -139,28 +150,25 @@ class Monitor(keras.callbacks.Callback):
         if self.writer is not None:
             
             # save traing summaries
-            for name, value in self.history.items():
-                if type(value) is not str:
-                    self.log_scalar('train/' + name, np.mean(value), epoch)
+            self._log_histories_epoch(self.history.items(), epoch, prefix='train')
 
             # save validation summaries
-            for name, value in self.valid_history.items():
-                if type(value) is not str:
-                    self.log_scalar('valid/' + name, np.mean(value), epoch)
+            self._log_histories_epoch(self.valid_history.items(), epoch, prefix='valid')
 
             # save visualisations
             for name, value in logs.images.items():
-                self.log_images('train/' + name, value, epoch)
+                self.log_images('epoch/train/' + name, value, epoch)
 
 
             self.writer.flush()
 
         # save weights
         for m in self.models:
-            if m:
+            if m and isinstance(m, keras.Model):
                 m.save('{}/{}-weights.{:05d}.hdf5'.format(
                     self.logdir,
                     m.name, epoch), include_optimizer=False)
+
 
         super().on_epoch_end(epoch, logs=logs)
 
@@ -170,15 +178,15 @@ class Monitor(keras.callbacks.Callback):
 
         # print summaries
         for m in self.models:
-            if m:
+            if m and isinstance(m, keras.Model):
                 m.summary()
 
         # restore weights
         init_epoch = utils.max_epoch(self.logdir)
-        if self.restore and init_epoch > 0:
+        if self.restore and init_epoch >= 0:
             print('Restoring Previous Checkpoints with epoch: {}...'.format(init_epoch))
             for m in self.models:
-                if m:
+                if m and isinstance(m, keras.Model):
                     m.load_weights('{}/{}-weights.{:05d}.hdf5'.format(
                         self.logdir,
                         m.name, init_epoch))

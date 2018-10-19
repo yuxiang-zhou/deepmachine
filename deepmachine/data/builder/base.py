@@ -33,7 +33,7 @@ class TFRecordBuilder(object):
     
                 # write the serialized object to disk
                 writer.write(serialized)
-            except:
-                pass
+            except Exception as e:
+                print(e)
 
         writer.close()

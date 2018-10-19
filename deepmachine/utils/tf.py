@@ -15,7 +15,6 @@ from menpo.transform import Translation, Scale
 
 from .np import sample_colours_from_colourmap
 
-slim = tf.contrib.slim
 ResizeMethod = tf.image.ResizeMethod
 
 # tf functions
@@ -156,7 +155,7 @@ def tf_logits_to_landmarks(keypoints):
 def tf_keypts_encoding(keypoints, num_classes):
     keypoints = tf.to_int32(keypoints)
     keypoints = tf.reshape(keypoints, (-1,))
-    keypoints = slim.layers.one_hot_encoding(
+    keypoints = tf.layers.one_hot_encoding(
         keypoints, num_classes=num_classes + 1)
     return keypoints
 

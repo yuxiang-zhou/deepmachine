@@ -1,5 +1,5 @@
 import tensorflow as tf
-from ..utils import union_dict
+from ...utils import union_dict
 
 
 image_feature = {

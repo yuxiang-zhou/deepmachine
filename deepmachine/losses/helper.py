@@ -1,5 +1,4 @@
 import tensorflow as tf
-slim = tf.contrib.slim
 
 
 def smooth_l1(pred, ground_truth, weights=1):
@@ -19,11 +18,13 @@ def smooth_l1(pred, ground_truth, weights=1):
     """
     residual = tf.abs(pred - ground_truth)
 
-    loss = tf.where(tf.less(residual, 1),
-                     0.5 * tf.square(residual),
-                     residual - .5)
+    loss = tf.where(
+        tf.less(residual, 1),
+        0.5 * tf.square(residual),
+        residual - .5
+    )
 
-    return slim.losses.compute_weighted_loss(loss, weights)
+    return tf.losses.compute_weighted_loss(residual, weights)
 
 
 def quaternion_loss(pred, ground_truth, weights=None):
@@ -39,7 +40,7 @@ def quaternion_loss(pred, ground_truth, weights=None):
     '''
     loss = 1 - tf.abs(tf.reduce_sum(pred * ground_truth, 1))
 
-    return slim.losses.compute_weighted_loss(loss, weights)
+    return tf.losses.compute_weighted_loss(loss, weights)
 
 
 def cosine_loss(pred, ground_truth, weights=None, dim=3):
@@ -54,7 +55,8 @@ def cosine_loss(pred, ground_truth, weights=None, dim=3):
       A scalar with the mean angular error (cosine loss).
     '''
     loss = 1 - tf.reduce_sum(pred * ground_truth, dim)
-    return slim.losses.compute_weighted_loss(loss, weights)
+    return tf.losses.compute_weighted_loss(loss, weights)
+
 
 def normalized_rmse(pred, gt_truth, weights=1):
     '''Computes the error normalised by the interocular distance.
@@ -65,6 +67,8 @@ def normalized_rmse(pred, gt_truth, weights=1):
     Returns:
       A scalar with the normalized rmse error.
     '''
-    norm = tf.sqrt(tf.reduce_sum(((gt_truth[:, 36, :] - gt_truth[:, 45, :])**2), 1))
-    loss = tf.reduce_sum(tf.sqrt(tf.reduce_sum(tf.square(pred - gt_truth), 2)), 1) / (norm * 68)
-    return slim.losses.compute_weighted_loss(loss, weights)
+    norm = tf.sqrt(tf.reduce_sum(
+        ((gt_truth[:, 36, :] - gt_truth[:, 45, :])**2), 1))
+    loss = tf.reduce_sum(tf.sqrt(tf.reduce_sum(
+        tf.square(pred - gt_truth), 2)), 1) / (norm * 68)
+    return tf.losses.compute_weighted_loss(loss, weights)

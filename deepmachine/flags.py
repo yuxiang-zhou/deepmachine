@@ -26,7 +26,7 @@ tf.app.flags.DEFINE_integer('no_thread', 4,
                     
 tf.app.flags.DEFINE_float('lr', 2e-4,
                     '''Learning rate''')
-tf.app.flags.DEFINE_float('lr_decay', 1,
+tf.app.flags.DEFINE_float('lr_decay', 0.99,
                     '''Learning rate decay = learning_rate * lr_decay ** epoch''')
 
 tf.app.flags.mark_flags_as_required([

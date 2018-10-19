@@ -1,25 +1,21 @@
-import tensorflow as tf
+# basic library
+import os
 import shutil
 import math
 import time
 import menpo.io as mio
 import menpo3d.io as m3io
 import numpy as np
-import deepmachine as dm
-
-
-from deepmachine.flags import FLAGS
-from deepmachine import data_provider
-from menpo.shape import PointCloud, TriMesh, ColouredTriMesh
 from pathlib import Path
-from menpo.visualize import print_progress
-from menpo.image import Image
-from menpo.transform import Translation
-from menpo3d.camera import PerspectiveCamera
-from menpo3d.unwrap import optimal_cylindrical_unwrap
-from menpo3d.rasterize import rasterize_mesh
 from functools import partial
 
+# deepmachine
+import keras
+import tensorflow as tf
+import deepmachine as dm
+
+# flag definitions
+from deepmachine.flags import FLAGS
 
 def main():
     tf.reset_default_graph()
@@ -32,17 +28,17 @@ def main():
     # Dataset
 
     def build_data():
-        dataset = data_provider.TFRecordNoFlipProvider(
+        dataset = dm.data.provider.TFRecordNoFlipProvider(
             DATA_PATH,
-            data_provider.features.FeatureIUVHM,
+            dm.data.provider.features.FeatureIUVHM,
             augmentation=True,
             resolvers={
-                'images': data_provider.resolvers.image_resolver,
-                'iuvs': partial(data_provider.resolvers.iuv_resolver, n_parts=2, dtype=tf.float32),
-                'heatmaps': data_provider.resolvers.heatmap_resolver_face,
+                'images': dm.data.provider.resolvers.image_resolver,
+                'iuvs': partial(dm.data.provider.resolvers.iuv_resolver, n_parts=2, dtype=tf.float32),
+                'heatmaps': dm.data.provider.resolvers.heatmap_resolver_face,
             }
         )
-        dataset = data_provider.DatasetQueue(
+        dataset = dm.data.provider.DatasetQueue(
             dataset, n_proccess=FLAGS.no_thread, batch_size=BATCH_SIZE)
         tf_data = dataset.get('images', 'iuvs', 'heatmaps')
 

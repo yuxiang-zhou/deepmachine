@@ -1,25 +1,21 @@
+# basic library
+import os
 import shutil
 import math
-import datetime
 import time
 import menpo.io as mio
 import menpo3d.io as m3io
 import numpy as np
-import deepmachine as dm
-import tensorflow as tf
-import keras
-from deepmachine.flags import FLAGS
-from matplotlib import pyplot as plt
-from functools import partial
-from deepmachine import data_provider
-from menpo.shape import PointCloud, TriMesh, ColouredTriMesh
 from pathlib import Path
-from menpo.visualize import print_progress, print_dynamic
-from menpo.image import Image
-from menpo.transform import Translation
-from menpo3d.camera import PerspectiveCamera
-from menpo3d.unwrap import optimal_cylindrical_unwrap
-from menpo3d.rasterize import rasterize_mesh
+from functools import partial
+
+# deepmachine
+import keras
+import tensorflow as tf
+import deepmachine as dm
+
+# flag definitions
+from deepmachine.flags import FLAGS
 
 
 def main():
@@ -127,6 +123,8 @@ def main():
             # outputs = dm.networks.UNet(inputs, [INPUT_SHAPE, INPUT_SHAPE, 3], nf=nf, ks=ks)
             # resnet
             outputs = dm.networks.ResNet50(inputs, [INPUT_SHAPE, INPUT_SHAPE, 3], nf=nf)
+            # hourglass
+            # outputs = dm.networks.Hourglass(inputs, [INPUT_SHAPE, INPUT_SHAPE, 3], nf=64, batch_norm='InstanceNormalization2D')
             return dm.Model(inputs, outputs, name=name)
 
         def build_discriminator(nf=DISCRIMINATOR_CH, depth=DEPTH, ks=4):
@@ -139,7 +137,7 @@ def main():
         input_A = dm.layers.Input(shape=[INPUT_SHAPE, INPUT_SHAPE, 3])
         input_B = dm.layers.Input(shape=[INPUT_SHAPE, INPUT_SHAPE, 3])
 
-        disc_A = dm.DeepMachine(build_discriminator(), name="disc_A")
+        disc_A =  dm.DeepMachine(build_discriminator(), name="disc_A")
         disc_B = dm.DeepMachine(build_discriminator(), name="disc_B")
 
         optimizer_disc = dm.optimizers.Adam(LR*W_DISC, 0.5, decay=LR_DECAY)
@@ -186,7 +184,7 @@ def main():
         generator_model.compile(
             optimizer=optimizer_gen,
             loss=['mse', 'mse', 'mae', 'mae', 'mae', 'mae'],
-            loss_weights=[1, 1, 10., 10., 0., 0.],
+            loss_weights=[2, 2, 10., 10., 0., 0.],
         )
 
         return generator_model, generator_AB, generator_BA, disc_A, disc_B
@@ -272,8 +270,7 @@ def main():
         train_queue, train_cyclegan_op,
         epochs=200, step_per_epoch=len(train_generator),
         callbacks=[
-            dm.callbacks.LambdaCallback(
-                on_epoch_end=lambda x, y: train_generator.on_epoch_end())
+            train_generator
         ],
         verbose=FLAGS.verbose,
         logdir=LOGDIR,

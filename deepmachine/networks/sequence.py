@@ -35,13 +35,12 @@ def ResiduleModule(x, dim, ks=3, s=1, kernel_initializer='glorot_uniform', activ
     return layers.Add()([y, x])
 
 
-def Encoding2D(inputs, out_channel, down_sample=True, module='Residule', add_residule=True, kernel_initializer='glorot_uniform', **kwargs):
+def Encoding2D(inputs, out_channel, down_sample=True, module='Residule', kernel_initializer='glorot_uniform', **kwargs):
     module_fn = globals()['%sModule' % module] if type(
         module) is str else module
 
     net = module_fn(inputs, out_channel,
                     kernel_initializer=kernel_initializer,
-                    add_residule=True,
                     **kwargs)
 
     if down_sample:
@@ -51,44 +50,54 @@ def Encoding2D(inputs, out_channel, down_sample=True, module='Residule', add_res
     return net
 
 
-def Hourglass(inputs, output_shape, depth=4, initial_channel=32, module='HGResidule', kernel_initializer='glorot_uniform', **kwargs):
+def Hourglass(inputs, output_shape, depth=4, nf=64, module='HGResidule', kernel_initializer='glorot_uniform', **kwargs):
 
     net = inputs
     net = conv2d(
-        net, initial_channel, 7,
+        net, nf, 7,
         strides=2,
         padding='same',
         batch_norm=None,
-        activation=True,
+        activation='relu',
         dropout=None,
-        use_coordconv=kwargs['use_coordconv'] or False,
+        use_coordconv=kwargs['use_coordconv'] if 'use_coordconv' in kwargs else False,
         kernel_initializer=kernel_initializer)
     net = layers.MaxPool2D(pool_size=2)(net)
     # Down sampling
     skip_layers = []
     for s in range(depth):
+        s = np.min([s, 3])
         skip_layers.append(net)
-        net = Encoding2D(net, initial_channel * (s+1), down_sample=True,
-                         add_residule=True, kernel_initializer=kernel_initializer, module=module, **kwargs)
+        net = Encoding2D(net, nf * 2 ** s, down_sample=True, activation='relu', kernel_initializer=kernel_initializer, module=module, **kwargs)
 
     # feature compression
-    net = Encoding2D(net, initial_channel * (depth + 1),
-                     down_sample=False, kernel_initializer=kernel_initializer, module=module, **kwargs)
+    net = Encoding2D(
+        net,
+        nf * 2 ** depth,
+        down_sample=False,
+        activation='relu',
+        kernel_initializer=kernel_initializer,
+        module=module,
+        **kwargs
+    )
 
     # up sampling
     for s, s_layer in zip(range(depth), skip_layers[::-1]):
+        s = (depth - s - 1)
+        s = np.min([s, 3])
         net = deconv2d(
-            net, initial_channel * (depth-s), 3,
-            kernel_initializer=kernel_initializer, **kwargs)
+            net, nf * 2 ** s, 3,
+            kernel_initializer=kernel_initializer, activation='relu', **kwargs)
         net = layers.Concatenate()([net, s_layer])
 
     # output regress
     net = deconv2d(
         net,
-        initial_channel * (depth-s),
+        nf,
         kernel_size=3,
         size=4,
         padding='same',
+        activation='relu',
         kernel_initializer=kernel_initializer, **kwargs)
 
     prediction = conv2d(
@@ -102,73 +111,62 @@ def Hourglass(inputs, output_shape, depth=4, initial_channel=32, module='HGResid
     return prediction
 
 
-def Encoder2D(inputs, embedding, depth=2, conv_channel=32, kernel_initializer='glorot_uniform', **kwargs):
+def Encoder2D(inputs, embedding, depth=2, nf=32, kernel_initializer='glorot_uniform', **kwargs):
 
     net = conv2d(
-        inputs,
-        conv_channel, (3, 3),
-        padding='same',
+        inputs, nf, 3,
+        activation='relu',
         kernel_initializer=kernel_initializer, **kwargs)
 
-    for s in range(depth):
+    for s in range(1, depth):
+        s = np.min([s, 4])
+        net = Encoding2D(net, nf * 2 ** s, module='HGResidule', **kwargs)
 
-        net = Encoding2D(net, conv_channel * (s+2), **kwargs)
-
-    net = Encoding2D(net, conv_channel * (depth+1),
+    s = np.min([depth, 4])
+    net = Encoding2D(net, nf * 2 ** s, module='HGResidule',
                      down_sample=False, **kwargs)
 
     net = layers.Flatten()(net)
     net = layers.Dense(embedding)(net)
-    net = layers.LeakyReLU()(net)
-    net = layers.Dropout(0.3)(net)
+    net = layers.ReLU()(net)
 
     return net
 
 
-def Decoder2D(inputs, out_shape, depth=2, conv_channel=32, kernel_initializer='glorot_uniform', **kwargs):
+def Decoder2D(inputs, out_shape, depth=2, nf=32, kernel_initializer='glorot_uniform', **kwargs):
 
     input_shape = np.array(list(np.array(
         out_shape[:-1]) / np.power([2, 2], depth)) + [inputs.shape.as_list()[-1]]).astype(np.int)
 
     net = layers.Dense(np.prod(input_shape))(inputs)
-    net = layers.LeakyReLU()(net)
+    net = layers.ReLU()(net)
 
     net = layers.Reshape(input_shape)(net)
 
     for s in range(depth):
-        net = conv2d(
-            net,
-            conv_channel * (depth - s), (3, 3),
-            strides=1,
-            padding='same',
-            kernel_initializer=kernel_initializer, **kwargs)
+        s = np.min([(depth - s - 1), 4])
         net = deconv2d(
-            net, conv_channel * (depth - s), 3,
+            net, nf * 2 ** s, 3,
+            activation='relu',
             kernel_initializer=kernel_initializer, **kwargs)
-
-    net = conv2d(
-        net,
-        conv_channel, (3, 3),
-        strides=1,
-        padding='same',
-        kernel_initializer=kernel_initializer, **kwargs)
 
     net = conv2d(
         net,
         out_shape[-1], (3, 3),
         strides=1,
         padding='same',
+        activation=None,
         kernel_initializer=kernel_initializer, **kwargs)
 
     return net
 
 
-def AutoEncoder(inputs, output_shape, depth=2, embedding=128, initial_channel=32, kernel_initializer='glorot_uniform', **kwargs):
+def AutoEncoder(inputs, output_shape, depth=2, embedding=128, nf=32, kernel_initializer='glorot_uniform', **kwargs):
 
     embedding = Encoder2D(inputs, embedding,
-                          depth=depth, conv_channel=initial_channel, **kwargs)
+                          depth=depth, nf=nf, **kwargs)
     reconstruction = Decoder2D(
-        embedding, output_shape, depth=depth, conv_channel=initial_channel, **kwargs)
+        embedding, output_shape, depth=depth, nf=nf, **kwargs)
 
     return reconstruction
 
@@ -242,24 +240,16 @@ def UNet(inputs, output_shape, nf=64, ks=4, **kwargs):
     return outputs
 
 
-def Discriminator(inputs, nf=64, depth=4, ks=4, **kwargs):
-    net = conv2d(
-        inputs,
-        nf,
-        ks,
-        strides=2,
-        padding='same',
-        batch_norm=None,
-        activation=True,
-    )
-    for i in range(depth - 1):
+def Discriminator(inputs, nf=64, depth=4, ks=4, return_endpoints=False, **kwargs):
+    net = inputs
+    for i in range(depth):
         net = conv2d(
             net,
-            nf * 2 ** (i+1),
+            nf * 2 ** i,
             ks,
-            strides=2 if i < depth - 2 else 1,
+            strides=2,
             padding='same',
-            batch_norm='InstanceNormalization2D',
+            batch_norm='InstanceNormalization2D' if i > 0 else None,
             activation=True,
             **kwargs
         )
@@ -273,6 +263,9 @@ def Discriminator(inputs, nf=64, depth=4, ks=4, **kwargs):
         batch_norm=False,
         activation=False,
     )
+
+    if return_endpoints:
+        return validity, net
 
     return validity
 
@@ -295,10 +288,10 @@ def ResNet50(inputs, output_shape, nf=64, n_residule=9, module='Residule', with_
         net = module_fn(net, nf*4, **kwargs)
 
     if with_deconv:
-        net = conv2dt(net, nf*2, 3, strides=2, activation='relu',
-                      batch_norm='InstanceNormalization2D', **kwargs)
-        net = conv2dt(net, nf, 3, strides=2, activation='relu',
-                      batch_norm='InstanceNormalization2D', **kwargs)
+        net = deconv2d(net, nf*2, 3, size=2, activation='relu',
+                       batch_norm='InstanceNormalization2D', **kwargs)
+        net = deconv2d(net, nf, 3, size=2, activation='relu',
+                       batch_norm='InstanceNormalization2D', **kwargs)
         net = conv2d(net, output_shape[-1], 7, strides=1,
                      padding='same', activation='tanh', batch_norm=None, **kwargs)
     elif with_dense:

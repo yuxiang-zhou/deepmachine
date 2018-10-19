@@ -1,33 +1,19 @@
-import sys, os, time
+# basic library
+import os
+import shutil
 import math
-import numpy as np
+import time
 import menpo.io as mio
 import menpo3d.io as m3io
-
-# 3rd party libs
+import numpy as np
 from pathlib import Path
 from functools import partial
-
-# menpo utils
-from menpo.feature import fast_dsift
-from menpo.transform import Translation, Rotation, Homogeneous, Scale
-from menpo.shape import PointCloud, TriMesh, ColouredTriMesh, TexturedTriMesh
-from menpo.image import Image
-from menpo.visualize import print_progress, print_dynamic
-# from menpo3d.morphablemodel import ColouredMorphableModel
 from menpo3d.unwrap import optimal_cylindrical_unwrap
-from menpo3d.rasterize import rasterize_shape_image_from_barycentric_coordinate_images, rasterize_barycentric_coordinate_images, rasterize_mesh, rasterize_mesh_from_barycentric_coordinate_images
-
-# 3dmm
-sys.path.append('/homes/yz4009/wd/gitdev/face2d3d/')
-# from itw3dmm.data import load_tassos_lsfm_combined_model
-# from itw3dmm import mappings
-from shading import lambertian_shading # pylint: disable
 
 # deepmachine
+import keras
 import tensorflow as tf
 import deepmachine as dm
-
 
 # flag definitions
 from deepmachine.flags import FLAGS
@@ -153,7 +139,7 @@ def main():
 
     def build_model():
         input_image = dm.layers.Input(shape=[INPUT_SHAPE,INPUT_SHAPE,6], name='input_image')
-        ae_image, [vae_encoder, vae_decoder] = dm.networks.VAE(input_image, nf=64, depth=4, embedding=256, latent=128, return_models=True)
+        ae_image, [vae_encoder, vae_decoder] = dm.networks.VAE(input_image, nf=64, depth=4, embedding=1024, latent=512, return_models=True)
         z_mean, z_log_var, _ = vae_encoder.outputs
 
         autoencoder_union = dm.DeepMachine(inputs=[input_image], outputs=[ae_image])

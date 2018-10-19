@@ -4,9 +4,8 @@ import numpy as np
 
 from pathlib import Path
 
-from .. import utils
+from ... import utils
 
-slim = tf.contrib.slim
 ResizeMethod = tf.image.ResizeMethod
 
 
@@ -47,7 +46,9 @@ class TFRecordProvider(Provider):
         self._key_resolver[key] = resolver
 
     def get(self, *keys):
-        images, *names = self._get_data_protobuff(self._filename, *keys)
+        data = self._get_data_protobuff(self._filename, *keys)
+        images = data[0]
+        names = data[1:]
         tensors = [images]
 
         for name in names:
@@ -103,7 +104,9 @@ class TFRecordProvider(Provider):
 
 class TFSeqRecordProvider(TFRecordProvider):
     def get(self, *keys):
-        images, *names = self._get_data_protobuff(self._filename, *keys)
+        data = self._get_data_protobuff(self._filename, *keys)
+        images = data[0]
+        names = data[1:]
         tensors = [images]
 
         for name in names:

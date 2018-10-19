@@ -358,7 +358,7 @@ def sample_points(target, range_x, range_y, edge=None, x=0, y=0):
 
 def max_epoch(path):
     path = Path(path).glob('*weights.*.hdf5')
-    return np.max([0]+[int(p.suffixes[0][1:]) for p in path])
+    return np.max([-1]+[int(p.suffixes[0][1:]) for p in path])
 
 
 def rgb2hex(rgb):

@@ -1,5 +1,4 @@
 import tensorflow as tf
-slim = tf.contrib.slim
 
 from . import helper
 from .. import utils

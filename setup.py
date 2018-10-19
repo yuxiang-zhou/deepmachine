@@ -11,9 +11,11 @@ setup(
     author_email='mr.yuxiang.zhou@googlemail.com',
     url='https://github.com/yuxiang-zhou/deepmachine',
     install_requires=[
-          'menpo',
-          'tensorflow-gpu',
-          'Keras>=2.2.2', 
-          'keras-contrib>=2.0.8',
-      ],
+        'cython',
+        'numpy',
+        'scikit-image',
+        'scikit-learn',
+        'tensorflow-gpu',
+        'Keras>=2.2.2',
+    ]
 )

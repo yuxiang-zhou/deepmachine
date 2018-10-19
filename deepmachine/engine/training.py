@@ -12,15 +12,15 @@ from keras import backend as K
 
 from ..utils import Summary, channels_to_rgb, max_epoch
 
-def _generator_adapter(data, i_epoch, i_batch, epoch_end):
+def generator_adapter(data, *args, **kwargs):
     return next(data)
 
 
-def _tf_dataset_adapter(data, i_epoch, i_batch, epoch_end):
+def tf_dataset_adapter(data, *args, **kwargs):
     return K.get_session().run(data)
 
 
-def _identity_adapter(data, i_epoch, i_batch, epoch_end):
+def identity_adapter(data, *args, **kwargs):
     return data
 
 
@@ -40,7 +40,7 @@ def _base_image_summary_op(train_x, train_y, predicts):
     return image_summary
 
 
-def _train_op(model, data, i_epoch, i_batch, epoch_end, adapter=_identity_adapter, image_summary_ops=[], training_history=[], **kwargs):
+def _train_op(model, data, i_epoch, i_batch, epoch_end, adapter=identity_adapter, image_summary_ops=[], training_history=[], **kwargs):
     train_x, train_y = adapter(data, i_epoch, i_batch, epoch_end)
     # ----------------------
     #  Train
@@ -72,7 +72,7 @@ def _train_op(model, data, i_epoch, i_batch, epoch_end, adapter=_identity_adapte
     return summary
 
 
-def _valid_op(model, data, i_epoch, i_batch, epoch_end, adapter=_identity_adapter, image_summary_ops=[], training_history=[], **kwargs):
+def _valid_op(model, data, i_epoch, i_batch, epoch_end, adapter=identity_adapter, image_summary_ops=[], training_history=[], **kwargs):
     valid_x, valid_y = adapter(data, i_epoch, i_batch, epoch_end)
     # ----------------------
     #  Validate
@@ -101,10 +101,10 @@ def _valid_op(model, data, i_epoch, i_batch, epoch_end, adapter=_identity_adapte
 
     return summary
 
-train_tf_data_op = partial(_train_op, adapter=_tf_dataset_adapter)
-train_generator_data_op = partial(_train_op, adapter=_generator_adapter)
-valid_tf_data_op = partial(_valid_op, adapter=_tf_dataset_adapter)
-valid_generator_data_op = partial(_valid_op, adapter=_generator_adapter)
+train_tf_data_op = partial(_train_op, adapter=tf_dataset_adapter)
+train_generator_data_op = partial(_train_op, adapter=generator_adapter)
+valid_tf_data_op = partial(_valid_op, adapter=tf_dataset_adapter)
+valid_generator_data_op = partial(_valid_op, adapter=generator_adapter)
 
 
 def train_monitor(
@@ -123,6 +123,8 @@ def train_monitor(
     summary_ops=[],
     verbose=1,
 ):
+    coord = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(coord=coord, sess=K.get_session())
     # initialise variables
     training_history = cbks.BatchHistory()
     monitor = cbks.Monitor(logdir, models, restore=restore)
@@ -133,15 +135,13 @@ def train_monitor(
 
     i_epoch = init_epochs
     if restore and logdir:
-        i_epoch = max_epoch(logdir)
+        i_epoch = max_epoch(logdir) + 1
     callbacks.append(training_history)
     callbacks.append(monitor)
     all_cbks = cbks.CallbackList(callbacks)
     all_summaries = [_base_image_summary_op] + summary_ops
 
     # start training
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(coord=coord, sess=K.get_session())
     all_cbks.on_train_begin()
     print("Training started from epoch: %d"%i_epoch)
     while i_epoch < epochs:
