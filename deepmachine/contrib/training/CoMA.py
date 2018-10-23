@@ -21,6 +21,8 @@ import keras
 import tensorflow as tf
 import deepmachine as dm
 
+from deepmachine.utils.machine import multi_gpu_model
+
 # flag definitions
 tf.app.flags.DEFINE_string('ref_model', 'coma', '''One of "coma, lsfm, 4dfab"''')
 from deepmachine.flags import FLAGS
@@ -177,10 +179,10 @@ def main():
             filter_list=FILTERS)
         
         # wrapping input and output
-        mesh_ae = dm.DeepMachine(
+        mesh_ae = multi_gpu_model(dm.DeepMachine(
             inputs=input_mesh, 
             outputs=[output_mesh]
-        )
+        ))
         
         # compile model with optimizer
         mesh_ae.compile(
@@ -199,11 +201,6 @@ def main():
         mesh_vertices.set_shape([BATCH_SIZE, N_VERTICES, 3])
         mesh_normals = tf.nn.l2_normalize(mesh_vertices, axis=2)
         mesh_normals.set_shape([BATCH_SIZE, N_VERTICES, 3])
-
-        # random model transformation
-        model_transforms = dm.utils.camera_utils.euler_matrices(
-            tf.random_uniform([BATCH_SIZE, 3]) * np.pi / 2 - np.pi / 4.
-        )[:, :3, :3]
 
         # rendering output
         mesh_triangles = tf.constant(trilist, dtype=tf.int32)

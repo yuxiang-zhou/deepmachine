@@ -71,7 +71,9 @@ class DeepMachine(keras.Model):
         max_queue_size=256,
         **kwargs
     ):
-        queue_data = utils.enqueue_generator(
+        from .utils.machine import enqueue_generator
+
+        queue_data = enqueue_generator(
             sequence_data,
             use_multiprocessing=use_multiprocessing,
             workers=workers,

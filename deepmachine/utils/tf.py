@@ -13,7 +13,7 @@ from menpo.image import Image
 from menpo.shape import PointCloud
 from menpo.transform import Translation, Scale
 
-from .np import sample_colours_from_colourmap
+from .channel_transform import sample_colours_from_colourmap
 
 ResizeMethod = tf.image.ResizeMethod
 

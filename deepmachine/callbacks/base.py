@@ -104,6 +104,7 @@ class Monitor(keras.callbacks.Callback):
             self.writer.add_summary(summary, step)
         except Exception as e:
             print('Error loging images with tag: %s'%tag)
+            print(e)
 
     def log_scalar(self, tag, value, step):
         """Log a scalar variable.
@@ -173,6 +174,7 @@ class Monitor(keras.callbacks.Callback):
         super().on_epoch_end(epoch, logs=logs)
 
     def on_train_begin(self, logs=None):
+        from ..utils.machine import max_epoch
         if not isinstance(self.models, collections.Iterable):
             self.models = [self.models]
 
@@ -182,7 +184,7 @@ class Monitor(keras.callbacks.Callback):
                 m.summary()
 
         # restore weights
-        init_epoch = utils.max_epoch(self.logdir)
+        init_epoch = max_epoch(self.logdir)
         if self.restore and init_epoch >= 0:
             print('Restoring Previous Checkpoints with epoch: {}...'.format(init_epoch))
             for m in self.models:

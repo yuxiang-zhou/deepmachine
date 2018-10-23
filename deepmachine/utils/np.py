@@ -15,6 +15,8 @@ from menpo.shape import PointCloud, TriMesh, ColouredTriMesh
 from menpo.transform import Translation, Scale, AlignmentSimilarity
 from menpo.model import pca
 
+from .base import parts_68
+
 
 def union_dict(dicts):
     udict = {}
@@ -223,33 +225,6 @@ def batch_draw_landmarks(imgs, lms):
     return np.array([draw_landmarks(img, l) for img, l in zip(imgs, lms)])
 
 
-def lms_to_heatmap(lms, h, w, sigma=5):
-    xs, ys = np.meshgrid(np.arange(0., w),
-                         np.arange(0., h))
-    gaussian = (1. / (sigma * np.sqrt(2. * np.pi)))
-
-    def gaussian_fn(l):
-        y, x = l
-
-        return np.exp(-0.5 * (np.power(ys - y, 2) + np.power(xs - x, 2)) *
-                      np.power(1. / sigma, 2.)) * gaussian * 17.
-
-    img_hm = np.stack(list(map(
-        gaussian_fn,
-        lms
-    )))
-
-    return img_hm
-
-
-def heatmap_to_lms(heatmap):
-    hs = np.argmax(np.max(heatmap, 1), 0)
-    ws = np.argmax(np.max(heatmap, 0), 0)
-    lms = np.stack([hs, ws]).T
-
-    return lms
-
-
 def crop_image_bounding_box(img, bbox, res, base=200., order=1):
 
     center = bbox.centre()
@@ -354,129 +329,3 @@ def sample_points(target, range_x, range_y, edge=None, x=0, y=0):
                     # print('Index out of Bound')
 
     return ret_img
-
-
-def max_epoch(path):
-    path = Path(path).glob('*weights.*.hdf5')
-    return np.max([-1]+[int(p.suffixes[0][1:]) for p in path])
-
-
-def rgb2hex(rgb):
-    return '#' + binascii.hexlify(struct_pack('BBB', *rgb)).decode('ascii')
-
-
-def decode_colour(colour):
-    if not (isinstance(colour, str) or isinstance(colour, unicode)):
-        # we assume that RGB was passed in. Convert it to unicode hex
-        return rgb2hex(colour)
-    else:
-        return str(colour)
-
-
-def sample_colours_from_colourmap(n_colours, colour_map):
-    import matplotlib.pyplot as plt
-    cm = plt.get_cmap(colour_map)
-    colours = []
-    for i in range(n_colours):
-        c = cm(1. * i / n_colours)[:3]
-        colours.append(decode_colour([int(i * 255) for i in c]))
-
-    return np.array([hex_to_rgb(x) for x in colours])
-
-
-def iuv_rgb(iuv, colour_set='jet'):
-    iuv = iuv.squeeze()
-    n_channel = iuv.shape[-1] // 3
-
-    index = np.argmax(iuv[..., :n_channel], axis=-
-                      1).squeeze().astype(np.ushort)
-
-    u = iuv[..., n_channel:n_channel * 2]
-    v = iuv[..., n_channel * 2:]
-
-    u = np.clip(u, 0, 1)
-    v = np.clip(v, 0, 1)
-
-    for i in range(n_channel):
-        u[index != i, i] = 0
-        v[index != i, i] = 0
-
-    colours = sample_colours_from_colourmap(
-        n_channel, colour_set
-    )
-
-    return (u.dot(colours) / 255. + v.dot(colours) / 255.) / 2.
-
-
-def one_hot(a, n_parts):
-    a = a.astype(np.int32)
-    b = np.zeros((len(a), n_parts))
-    b[np.arange(len(a)), a] = 1
-    return b
-
-
-def rgb_iuv(rgb):
-    # formation
-    iuv_mask = rgb[..., 0]
-    n_parts = int(np.max(iuv_mask) + 1)
-    iuv_one_hot = one_hot(iuv_mask.flatten(), n_parts).reshape(
-        iuv_mask.shape + (n_parts,))
-
-    # normalised uv
-    uv = rgb[..., 1:] / 255. if np.max(rgb[..., 1:]) > 1 else rgb[..., 1:]
-    u = iuv_one_hot * uv[..., 0][..., None]
-    v = iuv_one_hot * uv[..., 1][..., None]
-
-    iuv = np.concatenate([iuv_one_hot, u, v], 2)
-
-    return iuv
-
-
-def hex_to_rgb(hex_str):
-    hex_str = hex_str.strip()
-
-    if hex_str[0] == '#':
-        hex_str = hex_str[1:]
-
-    if len(hex_str) != 6:
-        raise ValueError('Input #{} is not in #RRGGBB format.'.format(hex_str))
-
-    r, g, b = hex_str[:2], hex_str[2:4], hex_str[4:]
-    rgb = [int(n, base=16) for n in (r, g, b)]
-    return np.array(rgb)
-
-
-def channels_to_rgb(pixels,
-                    colour_set='jet'):
-    colours = sample_colours_from_colourmap(
-        pixels.shape[-1], colour_set
-    )
-
-    return pixels.dot(colours) / 255.
-
-
-def channels_to_grid(pixels, n_col=4):
-
-    h, w, n_channel = pixels.shape
-    n_col = np.min([n_col, n_channel])
-    n_row = n_channel // n_col
-    grid = pixels[:, :, :n_col *
-                  n_row].reshape([h, w, n_col, n_row]).transpose([2, 3, 0, 1])
-    grid = np.concatenate(grid, axis=2)
-    grid = np.concatenate(grid, axis=0)
-
-    return grid
-
-
-svs_rgb = channels_to_rgb
-
-def enqueue_generator(data_generator, use_multiprocessing=True, workers=4, max_queue_size=256):
-    enqueuer = keras.utils.data_utils.GeneratorEnqueuer(
-        data_generator,
-        use_multiprocessing=use_multiprocessing,
-        wait_time=0)
-    enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-
-    output_generator = enqueuer.get()
-
-    return output_generator

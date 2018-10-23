@@ -4,5 +4,9 @@ from .base import *
 from .coord import *
 from .mrcnn import *
 from .mesh import *
-from .mesh_renderer import Renderer
+try:
+    from .mesh_renderer import Renderer
+except Exception as e:
+    print(e)
+    
 InstanceNormalization2D = InstanceNormalization

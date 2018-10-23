@@ -10,7 +10,8 @@ from menpo.visualize import print_dynamic
 from .. import callbacks as cbks
 from keras import backend as K
 
-from ..utils import Summary, channels_to_rgb, max_epoch
+from ..utils import Summary, channels_to_rgb
+
 
 def generator_adapter(data, *args, **kwargs):
     return next(data)
@@ -123,6 +124,8 @@ def train_monitor(
     summary_ops=[],
     verbose=1,
 ):
+    from ..utils.machine import max_epoch
+    
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(coord=coord, sess=K.get_session())
     # initialise variables
