@@ -5,7 +5,7 @@ from functools import partial
 from keras.utils import get_custom_objects
 from .. import layers
 
-def _conv(inputs, conv_layer, *args, padding='same', batch_norm=None, dropout=None, pre_conv=None, activation=True, **kwargs):
+def _conv(inputs, conv_layer, *args, padding='same', batch_norm=True, dropout=None, pre_conv=None, activation=True, **kwargs):
 
     net = inputs
 

@@ -27,11 +27,21 @@ def HGResiduleModule(inputs, out_channel, add_residule=True, kernel_initializer=
     return net
 
 
-def ResiduleModule(x, dim, ks=3, s=1, kernel_initializer='glorot_uniform', activation='relu', batch_norm='InstanceNormalization2D', **kwargs):
-    y = conv2d(x, dim, ks, strides=s, padding='same', activation=activation,
+def ResiduleModule(x, out_channels, ks=3, s=1, kernel_initializer='glorot_uniform', activation='relu', batch_norm='InstanceNormalization2D', **kwargs):
+    in_channels = K.int_shape(x)[-1]
+
+    # conv
+    y = layers.BatchNormalization()(x)
+    y = conv2d(y, out_channels, ks, strides=1, padding='same', activation=activation,
                batch_norm=batch_norm, kernel_initializer=kernel_initializer, **kwargs)
-    y = conv2d(y, dim, ks, strides=s, padding='same', activation=None,
+    y = conv2d(y, out_channels, ks, strides=s, padding='same', activation=None,
                batch_norm=batch_norm, kernel_initializer=kernel_initializer, **kwargs)
+
+    # residule
+    if in_channels != out_channels or s > 1:
+        x = conv2d(x, out_channels, 1, strides=s, padding='same', activation=None,
+               batch_norm=None, kernel_initializer=kernel_initializer, **kwargs)
+
     return layers.Add()([y, x])
 
 
@@ -275,7 +285,7 @@ def ResNet50(inputs, output_shape, nf=64, n_residule=9, module='Residule', with_
     module_fn = globals()['%sModule' % module] if type(
         module) is str else module
 
-    # The network with 9 blocks consists of: c7s1-32, d64, d128, R128, R128, R128,
+    # The network with n blocks consists of: c7s1-32, d64, d128, R128, R128, R128,
     # R128, R128, R128, R128, R128, R128, u64, u32, c7s1-3
     net = conv2d(inputs, nf, 7, strides=1, padding='same',
                  activation='relu', batch_norm='InstanceNormalization2D', **kwargs)
@@ -283,7 +293,7 @@ def ResNet50(inputs, output_shape, nf=64, n_residule=9, module='Residule', with_
                  batch_norm='InstanceNormalization2D', **kwargs)
     net = conv2d(net, nf * 4, 3, strides=2, activation='relu',
                  batch_norm='InstanceNormalization2D', **kwargs)
-    # define G network with 9 resnet blocks
+    # define G network with n resnet blocks
     for _ in range(n_residule):
         net = module_fn(net, nf*4, **kwargs)
 
@@ -294,13 +304,59 @@ def ResNet50(inputs, output_shape, nf=64, n_residule=9, module='Residule', with_
                        batch_norm='InstanceNormalization2D', **kwargs)
         net = conv2d(net, output_shape[-1], 7, strides=1,
                      padding='same', activation='tanh', batch_norm=None, **kwargs)
+                     
     elif with_dense:
         net = layers.Flatten()(net)
+        net = layers.Dropout(dropout)(net)
         net = layers.Dense(embeding, activation='relu')(net)
-        net = layers.Dropput(dropout)(net)
         net = layers.Dense(n_classes, activation='softmax')(net)
 
     return net
+
+
+def ArcFace(inputs, embeding, nf=64, n_classes=None, dropout=0.3, module='Residule', **kwargs):
+
+    inputs, gt_label = inputs
+
+    module_fn = globals()['%sModule' % module] if type(
+        module) is str else module
+
+    net = layers.BatchNormalization()(inputs)
+    # input shape: 112 * 112 * c
+    net = conv2d(net, nf, 3, strides=1, padding='same',
+                 activation=True, **kwargs)
+    # shape: 112 * 112 * 64
+    net = ResiduleModule(net, nf, s=2, **kwargs)
+    # shape: 56 * 56 * 64
+    net = ResiduleModule(net, nf, s=1, **kwargs)
+    # shape: 56 * 56 * 64
+    net = ResiduleModule(net, nf, s=1, **kwargs)
+    # shape: 56 * 56 * 64
+    net = ResiduleModule(net, nf*2, s=2, **kwargs)
+    # shape: 28 * 28 * 128
+    for _ in range(12):
+        net = ResiduleModule(net, nf*2, s=1, **kwargs)
+        # shape: 28 * 28 * 128
+    net = ResiduleModule(net, nf*4, s=2, **kwargs)
+    # shape: 14 * 14 * 256
+    for _ in range(29):
+        net = ResiduleModule(net, nf*4, s=1, **kwargs)
+        # shape: 14 * 14 * 256
+    net = ResiduleModule(net, nf*8, s=2, **kwargs)
+    # shape: 7 * 7 * 512
+    for _ in range(2):
+        net = ResiduleModule(net, nf*8, s=1, **kwargs)
+        # shape: 7 * 7 * 512
+    net = layers.BatchNormalization()(net)
+    net = layers.Dropout(dropout)(net)
+    net = layers.Flatten()(net)
+    embeding = layers.Dense(embeding, activation=None)(net)
+
+    if n_classes:
+        softmax = layers.ArcDense(n_classes, gt_label, 64, 1., 0.35, 0)(embeding)
+        return embeding, softmax
+
+    return embeding
 
 
 def VAE(inputs, nf=32, ks=3, depth=2, embedding=64, latent=16, return_models=False, *args, **kwargs):

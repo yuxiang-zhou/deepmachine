@@ -179,10 +179,15 @@ def main():
             filter_list=FILTERS)
         
         # wrapping input and output
-        mesh_ae = multi_gpu_model(dm.DeepMachine(
+        mesh_ae = dm.DeepMachine(
             inputs=input_mesh, 
             outputs=[output_mesh]
-        ))
+        )
+
+        n_gpu = len(FLAGS.gpu.split(','))
+        if n_gpu > 1:
+            mesh_ae = multi_gpu_model(mesh_ae, gpus=n_gpu)
+        
         
         # compile model with optimizer
         mesh_ae.compile(
@@ -241,7 +246,7 @@ def main():
         
         return mesh_ae, mesh_render
 
-    def custom_summary(train_x, train_y, predict_y):
+    def custom_summary(train_x, train_y, predict_y, epoch):
 
         def render_mesh(sample_mesh, res=256, scale=1):
 
@@ -258,13 +263,17 @@ def main():
                 colours=sample_colours
             )
             sample_mesh = lambertian_shading(sample_mesh, ambient_colour=0)
-            m3io.export_mesh(sample_mesh, Path(LOGDIR)/'{}.obj'.format(time.time()))
+            store_path = Path(LOGDIR)/str(epoch)
+            if not store_path.exists():
+                store_path.mkdir()
+
+            m3io.export_mesh(sample_mesh, store_path/'{}.obj'.format(time.time()))
 
             mesh_img = rasterize_mesh(
                 sample_mesh,
                 [res, res]
             )
-            mesh_img = mesh_img.rotate_ccw_about_centre(90)
+            # mesh_img = mesh_img.rotate_ccw_about_centre()
 
             return mesh_img.pixels_with_channels_at_back()
 
@@ -279,8 +288,8 @@ def main():
 
 
         return {
-            'target/mesh': np.array(list(map(render_mesh, train_y[0]))),
-            'output/mesh': np.array(list(map(render_mesh, predict_y[0]))),
+            'target/mesh': np.array(list(map(render_mesh, train_y[0][:4]))),
+            'output/mesh': np.array(list(map(render_mesh, predict_y[0][:4]))),
             'target/dr_mesh': dr_render_mesh(train_y[0]),
             'output/dr_mesh': dr_render_mesh(predict_y[0]),
         }

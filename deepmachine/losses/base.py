@@ -5,6 +5,8 @@ from keras.utils import get_custom_objects
 from . import helper
 from .. import utils
 
+def dummy(y_true, y_pred):
+    return K.constant(0)
 
 def loss_heatmap_regression(y_true, y_pred, heatmap_weight=500):
 

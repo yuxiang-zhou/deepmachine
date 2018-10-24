@@ -25,7 +25,7 @@ def identity_adapter(data, *args, **kwargs):
     return data
 
 
-def _base_image_summary_op(train_x, train_y, predicts):
+def _base_image_summary_op(train_x, train_y, predicts, *args):
     train_x = [] if train_x is None else train_x
     train_y = [] if train_y is None else train_y
     predicts = [] if predicts is None else predicts
@@ -66,7 +66,7 @@ def _train_op(model, data, i_epoch, i_batch, epoch_end, adapter=identity_adapter
         if len(predicts) != len(train_y):
             predicts = [predicts]
         for img_op in image_summary_ops:
-            image_summary = img_op(train_x, train_y, predicts)
+            image_summary = img_op(train_x, train_y, predicts, i_epoch)
 
             summary.update_images(image_summary)
 
