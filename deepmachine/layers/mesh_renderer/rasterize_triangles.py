@@ -21,8 +21,10 @@ from __future__ import print_function
 import os
 import tensorflow as tf
 
+from pathlib import Path
 
-rasterize_triangles_module = tf.load_op_library('/vol/phoebe/yz4009/gitdev/DeepLearning/DeepMachine/deepmachine/layers/mesh_renderer/kernels/rasterize_triangles_kernel.so')
+module_path = str(Path(os.path.abspath(__file__)).parent)
+rasterize_triangles_module = tf.load_op_library(module_path + '/kernels/rasterize_triangles_kernel.so')
 
 
 # This epsilon should be smaller than any valid barycentric reweighting factor

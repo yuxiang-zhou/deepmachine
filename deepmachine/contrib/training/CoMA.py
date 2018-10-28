@@ -106,8 +106,9 @@ def main():
                 return self.size // self.batch_size
 
             def __getitem__(self, idx):
+                indexes = self.indexes[idx * self.batch_size: (idx + 1) * self.batch_size]
                 batch_sample_mesh = np.array([
-                    self.train_mesh[self.indexes[i]] * self.scale for i in range(idx, idx+BATCH_SIZE)
+                    self.train_mesh[i] * self.scale for i in indexes
                 ])
 
                 return [batch_sample_mesh], [batch_sample_mesh]
@@ -132,7 +133,7 @@ def main():
 
             def __getitem__(self, idx):
                 batch_sample_mesh = np.array([
-                    self.train_mesh[self.indexes[i]] for i in range(idx, idx+BATCH_SIZE)
+                    self.train_mesh[self.indexes[i]] for i in range(idx*self.batch_size, idx*self.batch_size+self.batch_size)
                 ])
 
                 if not self.with_rgb:
@@ -273,7 +274,7 @@ def main():
                 sample_mesh,
                 [res, res]
             )
-            # mesh_img = mesh_img.rotate_ccw_about_centre()
+            mesh_img = mesh_img.rotate_ccw_about_centre(180)
 
             return mesh_img.pixels_with_channels_at_back()
 

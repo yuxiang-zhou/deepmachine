@@ -5,7 +5,14 @@ import scipy.sparse
 import scipy.sparse.linalg
 import scipy.spatial.distance
 import numpy as np
+import menpo3d.io as m3io
 
+from menpo3d.rasterize import rasterize_mesh
+from itwmm.visualize import lambertian_shading
+from menpo.transform import Homogeneous
+from menpo.shape import ColouredTriMesh, TriMesh
+
+from .np import rotation_matrix
 
 def grid(m, dtype=np.float32):
     """Return the embedding of a grid graph."""
@@ -256,3 +263,38 @@ def chebyshev(L, X, K):
     for k in range(2, K):
         Xt[k, ...] = 2 * L.dot(Xt[k-1, ...]) - Xt[k-2, ...]
     return Xt
+
+
+def render_mesh(sample_mesh, trilist, res=256, scale=1, store_path=None):
+
+        if sample_mesh.shape[-1] != 3:
+            sample_colours = sample_mesh[...,3:]
+        else:
+            sample_colours = np.ones_like(sample_mesh) * [0, 0, 1]
+        sample_mesh = sample_mesh[...,:3]
+
+        sample_mesh = ColouredTriMesh(
+            sample_mesh * scale * res / 2 + res / 2,
+            trilist=trilist,
+            colours=sample_colours
+        )
+        sample_mesh = lambertian_shading(sample_mesh, ambient_colour=0)
+
+        mesh_img = rasterize_mesh(
+            sample_mesh,
+            [res, res]
+        )
+        # mesh_img = mesh_img.rotate_ccw_about_centre(180)
+
+        if store_path:
+            if not store_path.exists():
+                store_path.mkdir()
+
+            m3io.export_mesh(sample_mesh, store_path/'{}.obj'.format(time.time()))
+
+        return mesh_img.pixels_with_channels_at_back()
+
+
+def render_meshes(sample_meshes, trilist, **kwargs):
+
+    return np.array([render_mesh(m, trilist, **kwargs) for m in sample_meshes])

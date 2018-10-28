@@ -353,7 +353,7 @@ def ArcFace(inputs, embeding, nf=64, n_classes=None, dropout=0.3, module='Residu
     embeding = layers.Dense(embeding, activation=None)(net)
 
     if n_classes:
-        softmax = layers.ArcDense(n_classes, gt_label, 64, 1., 0.35, 0)(embeding)
+        softmax = layers.ArcDense(n_classes)(embeding)
         return embeding, softmax
 
     return embeding

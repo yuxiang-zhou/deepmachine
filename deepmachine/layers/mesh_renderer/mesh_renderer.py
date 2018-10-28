@@ -281,10 +281,14 @@ def mesh_renderer(
     Raises:
       ValueError: An invalid argument to the method is detected.
     """
+    
     if len(vertices.shape) != 3:
         raise ValueError(
             'Vertices must have shape [batch_size, vertex_count, 3].')
     batch_size = vertices.shape[0].value
+    if batch_size is None:
+        raise ValueError(
+            'batch_size must be specified with tf renderer.')
     if len(normals.shape) != 3:
         raise ValueError(
             'Normals must have shape [batch_size, vertex_count, 3].')

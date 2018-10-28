@@ -20,8 +20,6 @@ class Generator(utils.Sequence, callbacks.Callback):
         self._data_process_fn = data_process_fn
         np.random.shuffle(self.indexes)
 
-
-
     def on_epoch_end(self, *args, **kwargs):
         np.random.shuffle(self.indexes)
 
@@ -43,3 +41,28 @@ class Generator(utils.Sequence, callbacks.Callback):
             batch_output = np.array(batch_output)
 
         return batch_output
+
+
+class MergeGenerators(utils.Sequence, callbacks.Callback):
+    def __init__(self, *generators):
+        super().__init__()
+
+        self._generators = list(generators)
+    
+    def on_epoch_end(self, *args, **kwargs):
+        for g in self._generators:
+            g.on_epoch_end(*args, **kwargs)
+
+    def __len__(self):
+        return np.min([len(g) for g in self._generators])
+
+    def __getitem__(self, idx):
+        train_x = []
+        train_y = []
+
+        for g in self._generators:
+            g_x, g_y = g[idx]
+            train_x += g_x
+            train_y += g_y
+
+        return train_x, train_y

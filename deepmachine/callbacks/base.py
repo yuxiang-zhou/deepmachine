@@ -160,15 +160,20 @@ class Monitor(keras.callbacks.Callback):
             for name, value in logs.images.items():
                 self.log_images('epoch/train/' + name, value, epoch)
 
-
             self.writer.flush()
 
         # save weights
         for m in self.models:
             if m and isinstance(m, keras.Model):
-                m.save('{}/{}-weights.{:05d}.hdf5'.format(
+                weight_path = '{}/{}-weights.{:05d}.hdf5'.format(
                     self.logdir,
-                    m.name, epoch), include_optimizer=False)
+                    m.name, 
+                    epoch
+                )
+                try:
+                    m.save(weight_path, include_optimizer=False)
+                except:
+                    m.save_weights(weight_path)
 
 
         super().on_epoch_end(epoch, logs=logs)

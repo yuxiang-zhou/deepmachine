@@ -63,8 +63,6 @@ class ArcDense(Layer):
     def __init__(
         self,
         units,
-        gt_one_hot_label,
-        s, m1, m2, m3,
         kernel_initializer='glorot_uniform',
         kernel_regularizer=None,
         kernel_constraint=None,
@@ -73,8 +71,6 @@ class ArcDense(Layer):
             kwargs['input_shape'] = (kwargs.pop('input_dim'),)
         super().__init__(**kwargs)
         self.units = units
-        self.gt_one_hot_label = gt_one_hot_label
-        self.params = [s, m1, m2, m3]
         self.kernel_initializer = initializers.get(kernel_initializer)
         self.kernel_regularizer = regularizers.get(kernel_regularizer)
         self.kernel_constraint = constraints.get(kernel_constraint)
@@ -90,19 +86,12 @@ class ArcDense(Layer):
                                       constraint=self.kernel_constraint)
 
     def call(self, inputs):
-        s, m1, m2, m3 = self.params
         # l2 normalize parameters
         norm_x = K.l2_normalize(inputs)
         norm_w = K.l2_normalize(self.kernel)
 
         # compute arc distance
-        arc = K.dot(norm_x, norm_w) * self.gt_one_hot_label
-        arc = tf.acos(arc)
-        arc = tf.cos(arc * m1 + m2) - m3
-        arc = arc * s
-        
-        # softmax
-        output = K.softmax(arc)
+        output = K.dot(norm_x, norm_w)
         return output
 
     def compute_output_shape(self, input_shape):
@@ -111,8 +100,6 @@ class ArcDense(Layer):
     def get_config(self):
         config = {
             'units': self.units,
-            'params': self.params,
-            'gt_one_hot_label': self.gt_one_hot_label,
             'kernel_initializer': initializers.serialize(self.kernel_initializer),
             'kernel_regularizer': regularizers.serialize(self.kernel_regularizer),
             'kernel_constraint': constraints.serialize(self.kernel_constraint),

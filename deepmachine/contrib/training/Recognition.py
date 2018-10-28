@@ -24,7 +24,6 @@ def main():
     INPUT_SHAPE = 112
     INPUT_CHANNELS = 10
     NF = 64
-    NR = 9
     N_CLASSES = 500
     LR = FLAGS.lr
     LOGDIR = "{}/model_{}".format(FLAGS.logdir, time.time()
@@ -90,9 +89,21 @@ def main():
         if n_gpu > 1:
             train_model = multi_gpu_model(train_model, gpus=n_gpu)
 
+        def arc_loss(y_true, y_pred, s=64., m1=1., m2=0.35, m3=0.):
+            # arc feature
+            arc = y_pred * y_true
+            arc = tf.acos(arc)
+            arc = tf.cos(arc * m1 + m2) - m3
+            arc = arc * s
+
+            # softmax
+            pred_softmax = dm.K.softmax(arc)
+            return dm.losses.categorical_crossentropy(y_true, pred_softmax)
+
+
         train_model.compile(
             optimizer=dm.optimizers.Adam(lr=LR),
-            loss=[dm.losses.dummy, 'categorical_crossentropy'],
+            loss=[dm.losses.dummy, arc_loss],
         )
 
         return train_model
