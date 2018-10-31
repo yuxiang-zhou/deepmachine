@@ -8,9 +8,11 @@ import numpy as np
 import menpo3d.io as m3io
 
 from menpo3d.rasterize import rasterize_mesh
+from menpo3d.rasterize import rasterize_barycentric_coordinate_images
 from itwmm.visualize import lambertian_shading
 from menpo.transform import Homogeneous
 from menpo.shape import ColouredTriMesh, TriMesh
+
 
 from .np import rotation_matrix
 
@@ -265,7 +267,20 @@ def chebyshev(L, X, K):
     return Xt
 
 
-def render_mesh(sample_mesh, trilist, res=256, scale=1, store_path=None):
+def shape_mask(mesh):
+    bcoords_img_inst, tri_index_img_inst = rasterize_barycentric_coordinate_images(mesh, [256,256])
+    TI_inst = tri_index_img_inst.as_vector()
+    BC_inst = bcoords_img_inst.as_vector(keep_channels=True).T
+    sample_index = tri_index_img_inst.as_unmasked().sample(mesh.with_dims([0,1])).squeeze()
+    shape_mask_idx = np.unique(mesh.trilist[sample_index].flatten())
+    
+    shape_mask_arr = np.zeros([mesh.n_points])
+    shape_mask_arr[shape_mask_idx] += 1
+    
+    return shape_mask_arr > 0
+
+
+def render_mesh(sample_mesh, trilist, scale=128, offset=128, shape=[256, 256], store_path=None):
 
         if sample_mesh.shape[-1] != 3:
             sample_colours = sample_mesh[...,3:]
@@ -274,7 +289,7 @@ def render_mesh(sample_mesh, trilist, res=256, scale=1, store_path=None):
         sample_mesh = sample_mesh[...,:3]
 
         sample_mesh = ColouredTriMesh(
-            sample_mesh * scale * res / 2 + res / 2,
+            sample_mesh * scale + offset,
             trilist=trilist,
             colours=sample_colours
         )
@@ -282,7 +297,7 @@ def render_mesh(sample_mesh, trilist, res=256, scale=1, store_path=None):
 
         mesh_img = rasterize_mesh(
             sample_mesh,
-            [res, res]
+            shape
         )
         # mesh_img = mesh_img.rotate_ccw_about_centre(180)
 

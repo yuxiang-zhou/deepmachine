@@ -189,6 +189,7 @@ class Monitor(keras.callbacks.Callback):
                 m.summary()
 
         # restore weights
+        print(self.logdir)
         init_epoch = max_epoch(self.logdir)
         if self.restore and init_epoch >= 0:
             print('Restoring Previous Checkpoints with epoch: {}...'.format(init_epoch))

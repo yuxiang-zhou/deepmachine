@@ -24,6 +24,7 @@ import deepmachine as dm
 from deepmachine.utils.machine import multi_gpu_model
 
 # flag definitions
+tf.app.flags.DEFINE_string('meta_path', '/vol/atlas/homes/yz4009/databases/mesh/meta', '''path to meta files''')
 tf.app.flags.DEFINE_string('ref_model', 'coma', '''One of "coma, lsfm, 4dfab"''')
 from deepmachine.flags import FLAGS
 
@@ -33,6 +34,7 @@ def main():
     BATCH_SIZE = FLAGS.batch_size
     N_VERTICES = 5023
     EMBEDING = 8
+    INPUT_CHANNEL = 6 if FLAGS.ref_model == 'lsfm_rgb' or FLAGS.ref_model.startswith('mein3d') else 3
     LR = FLAGS.lr
     FILTERS = [16, 16, 16, 32]
     LOGDIR = FLAGS.logdir if 'model_' in FLAGS.logdir else "{}/model_{}".format(
@@ -43,22 +45,30 @@ def main():
     if FLAGS.ref_model.startswith('lsfm') or FLAGS.ref_model == 'mein3d':
         N_VERTICES = 53215
         shape_model = mio.import_pickle(
-            '/homes/yz4009/wd/notebooks/Projects/MLProjects/models/all_all_all.pkl')
+            FLAGS.meta_path + '/all_all_all.pkl')
         trilist = shape_model.instance([]).trilist
         EMBEDING = 128
         FILTERS = [16, 32, 32, 64]
 
     elif FLAGS.ref_model == 'mein3dcrop':
         N_VERTICES = 28431
-        face_mean_crop = m3io.import_mesh('/homes/yz4009/wd/gitdev/coma/data/face_mean_mesh_crop.obj')
+        face_mean_crop = m3io.import_mesh(FLAGS.meta_path + '/face_mean_mesh_crop.obj')
+        trilist = face_mean_crop.trilist
+        EMBEDING = 256
+        FILTERS = [16, 32, 32, 64]
+
+    elif FLAGS.ref_model == 'mein3dcropmesh':
+        N_VERTICES = 28431
+        face_mean_crop = m3io.import_mesh(FLAGS.meta_path + '/face_mean_mesh_crop.obj')
         trilist = face_mean_crop.trilist
         EMBEDING = 128
         FILTERS = [16, 32, 32, 64]
+        INPUT_CHANNEL = 3
         
     elif FLAGS.ref_model == 'coma':
         N_VERTICES = 5023
         trilist = mio.import_pickle(
-            '/homes/yz4009/wd/gitdev/coma/data/coma_f.pkl', encoding='latin1')
+            FLAGS.meta_path + '/coma_f.pkl', encoding='latin1')
 
     elif FLAGS.ref_model == '4dfab':
         N_VERTICES = 2064
@@ -69,7 +79,7 @@ def main():
         raise Exception('Undefined ref_model: {}'.format(FLAGS.ref_model))
 
     graph_laplacians, downsampling_matrices, upsamling_matrices, adj_matrices = mio.import_pickle(
-        '/homes/yz4009/wd/gitdev/coma/data/{}_LDUA.pkl'.format(FLAGS.ref_model), encoding='latin1')
+        FLAGS.meta_path + '/{}_LDUA.pkl'.format(FLAGS.ref_model), encoding='latin1')
 
     def build_data():
         class MeshRandomSample(dm.utils.Sequence):
@@ -149,13 +159,16 @@ def main():
             return MeshRandomSample(batch_size=BATCH_SIZE)
 
         elif FLAGS.ref_model == 'lsfm_rgb':
-            return H5Mesh('/homes/yz4009/wd/gitdev/coma/data/lsfm_texture_train.h5', 'lsfm_colour', batch_size=BATCH_SIZE)
+            return H5Mesh(FLAGS.meta_path + '/../lsfm_texture_train.h5', 'lsfm_colour', batch_size=BATCH_SIZE)
 
         elif FLAGS.ref_model == 'mein3d':
-            return H5Mesh('/homes/yz4009/wd/gitdev/coma/data/mein3d.h5', 'colour_mesh', batch_size=BATCH_SIZE)
+            return H5Mesh(FLAGS.meta_path + '/../mein3d.h5', 'colour_mesh', batch_size=BATCH_SIZE)
 
         elif FLAGS.ref_model == 'mein3dcrop':
-            return H5Mesh('/homes/yz4009/wd/gitdev/coma/data/mein3dcrop.h5', 'colour_mesh', batch_size=BATCH_SIZE)
+            return H5Mesh(FLAGS.meta_path + '/../mein3dcrop.h5', 'colour_mesh', batch_size=BATCH_SIZE)
+
+        elif FLAGS.ref_model == 'mein3dcropmesh':
+            return H5Mesh(FLAGS.meta_path + '/../mein3dcropmesh.h5', 'mesh', batch_size=BATCH_SIZE)
             
         elif FLAGS.ref_model == 'coma':
             return NumpyMesh('/homes/yz4009/wd/gitdev/coma/data/bareteeth/train.npy', batch_size=BATCH_SIZE, scale=5)
@@ -296,11 +309,11 @@ def main():
         }
 
     training_generator = build_data()
-    auto_encoder, renderer = build_model(inputs_channels=6 if FLAGS.ref_model == 'lsfm_rgb' or FLAGS.ref_model.startswith('mein3d') else 3)
+    auto_encoder, renderer = build_model(inputs_channels=INPUT_CHANNEL)
 
     results = auto_encoder.fit(
         training_generator,
-        epochs=300,
+        epochs=1000,
         lr_decay=FLAGS.lr_decay,
         logdir=LOGDIR,
         verbose=2,

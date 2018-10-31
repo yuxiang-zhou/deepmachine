@@ -1,3 +1,4 @@
 git+https://github.com/menpo/menpo.git
 git+https://github.com/menpo/menpo3d.git
+git+https://github.com/menpo/itwmm.git
 git+https://github.com/keras-team/keras-contrib.git

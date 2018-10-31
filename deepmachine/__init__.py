@@ -14,6 +14,7 @@ from . import layers
 from . import callbacks
 from . import losses
 from . import data
+from . import io
 # version control
 from ._version import get_versions
 __version__ = get_versions()['version']

@@ -7,7 +7,7 @@ tf.app.flags.DEFINE_string('f', '', 'kernel')
 
 # training parameters
 tf.app.flags.DEFINE_string('gpu', '',
-                    '''gpu id to use''')
+                    '''gpu ids to use''')
 
 tf.app.flags.DEFINE_string('dataset_path', None,
                     '''Directory where to load datas and checkpoint.''')
@@ -17,7 +17,8 @@ tf.app.flags.DEFINE_string('logdir', None,
 
 tf.app.flags.DEFINE_integer('batch_size', 32,
                     '''Batch Size''')
-
+tf.app.flags.DEFINE_integer('n_epoch', 200,
+                    '''Batch Size''')
 tf.app.flags.DEFINE_integer('verbose', 2,
                     '''Stdout infomation details''')
 

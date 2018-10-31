@@ -25,6 +25,7 @@ import deepmachine as dm
 from deepmachine.utils.machine import multi_gpu_model, enqueue_generator
 
 # flag definitions
+tf.app.flags.DEFINE_string('meta_path', '/vol/atlas/homes/yz4009/databases/mesh/meta', '''path to meta files''')
 from deepmachine.flags import FLAGS
 
 def main():
@@ -44,10 +45,10 @@ def main():
 
     # globel constant
     n_gpu = len(FLAGS.gpu.split(','))
-    face_mean_crop = m3io.import_mesh('/homes/yz4009/wd/gitdev/coma/data/face_mean_mesh_crop.obj')
+    face_mean_crop = m3io.import_mesh(FLAGS.meta_path + '/face_mean_mesh_crop.obj')
     trilist = face_mean_crop.trilist
     graph_laplacians, downsampling_matrices, upsamling_matrices, adj_matrices = mio.import_pickle(
-        '/homes/yz4009/wd/gitdev/coma/data/mein3dcrop_LDUA.pkl', encoding='latin1')
+        FLAGS.meta_path + '/mein3dcrop_LDUA.pkl', encoding='latin1')
 
     def build_data():
         
@@ -300,7 +301,7 @@ def main():
             })
 
             logs.update_scalars(
-                {'cam_params/{}'%idx_p: p for idx_p, p in enumerate(cam_params)}
+                {'cam_params/{}'.format(idx_p): p for idx_p, p in enumerate(cam_params[0])}
             )
 
         return logs
