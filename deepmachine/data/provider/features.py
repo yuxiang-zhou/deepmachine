@@ -13,7 +13,7 @@ def lms_feature(key='landmarks',visible_label=None, marked_label=None):
     # landmarks
     f = {
         key: tf.FixedLenFeature([], tf.string),
-        '%s/count': tf.FixedLenFeature([], tf.int64),
+        '%s/count'%key: tf.FixedLenFeature([], tf.int64),
     }
     if visible_label:
         f.update({

@@ -37,6 +37,9 @@ def main():
             dm.data.provider.features.array_feature('label'),
             dm.data.provider.features.lms_feature('landmarks'),
         ])
+
+        print(features)
+
         dataset = dm.data.provider.TFRecordProvider(
             FLAGS.dataset_path,
             features,
