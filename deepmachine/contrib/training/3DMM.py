@@ -64,79 +64,34 @@ def main():
 
     def build_data():
 
-        fd = h5py.File(FLAGS.dataset_path, 'r')
-        
-        class H5Data(dm.utils.Sequence):
+        features = dm.utils.union_dict([
+            dm.data.provider.features.image_feature(),
+            dm.data.provider.features.matrix_feature('mesh'),
+            dm.data.provider.features.matrix_feature('mesh/colour'),
+            dm.data.provider.features.array_feature('mesh/mask'),
+        ])
+        dataset = dm.data.provider.TFRecordProvider(
+            FLAGS.dataset_path,
+            features,
+            resolvers={
+                'image': dm.data.provider.resolvers.image_resolver,
+                'mesh': partial(dm.data.provider.resolvers.matrix_resolver, input_shape=[N_VERTICES, 3]),
+                'mesh/colour': partial(dm.data.provider.resolvers.matrix_resolver, input_shape=[N_VERTICES, 3]),
+                'mesh/mask': partial(dm.data.provider.resolvers.array_resolver, input_shape=[N_VERTICES]),
+            }
+        )
+        dataset = dm.data.provider.DatasetQueue(
+            dataset, n_proccess=FLAGS.no_thread, batch_size=BATCH_SIZE)
+        tf_data = dataset.get('image', 'mesh', 'mesh/colour', 'mesh/mask')
 
-            def __init__(self, fd, batch_size=BATCH_SIZE):
-                self.train_data = fd
-                self.train_data.swmr_mode = True
-                self.batch_size = batch_size
-                self.size = 39960
-                self.indexes = list(range(self.size))
-                np.random.shuffle(self.indexes)
-                super().__init__()
+        batch_mesh_input = tf.concat([
+            tf_data['mesh'], tf_data['mesh/colour']
+        ], axis=-1)
+        batch_mesh_gt = tf.concat([
+            tf_data['mesh'], tf_data['mesh/colour'], tf.reshape(tf_data['mesh/mask'], [-1,N_VERTICES,1])
+        ], axis=-1)
 
-            def __len__(self):
-                return self.size // self.batch_size
-
-            def __getitem__(self, idx):
-                indexes = self.indexes[idx * self.batch_size: (idx + 1) * self.batch_size]
-
-                batch_mesh = []
-                batch_mesh_colour = []
-                batch_mesh_mask = []
-                batch_img = []
-                for i in indexes:
-                    if self.train_data['label'][i] == 1:
-                        try:
-                            mesh = self.train_data['mesh'][i]
-                            mesh_colour = self.train_data['mesh_colour'][i]
-                            mesh_mask = self.train_data['mesh_mask'][i].reshape([-1,1])
-                            image = self.train_data['image'][i]
-                            
-                            # mesh
-                            batch_mesh.append(
-                                mesh
-                            )
-
-                            batch_mesh_colour.append(
-                                mesh_colour
-                            )
-
-                            batch_mesh_mask.append(
-                                mesh_mask
-                            )
-
-                            # images
-                            batch_img.append(
-                                image
-                            )
-
-                            
-                        except:
-                            pass
-
-                batch_mesh = np.array(batch_mesh)
-                batch_mesh_colour = np.array(batch_mesh_colour)
-                batch_mesh_mask = np.array(batch_mesh_mask)
-                batch_img = np.array(batch_img)
-
-                batch_mesh_input = np.concatenate([
-                    batch_mesh, batch_mesh_colour
-                ], axis=-1)
-
-                batch_mesh_gt = np.concatenate([
-                    batch_mesh, batch_mesh_colour, batch_mesh_mask.astype(np.float)
-                ], axis=-1)
-
-                return [batch_mesh_input, batch_img], [batch_mesh_gt, batch_mesh_gt]
-
-            def on_epoch_end(self, *args, **kwargs):
-                np.random.shuffle(self.indexes)
-                return super().on_epoch_end()
-        
-        return H5Data(fd, batch_size=BATCH_SIZE)
+        return [batch_mesh_input, tf_data['image']], [batch_mesh_gt, batch_mesh_gt]
 
     def build_model(inputs_channels=6, n_gpu=n_gpu):
 
@@ -224,11 +179,11 @@ def main():
 
     results = model_3dmm.fit(
         training_generator,
+        step_per_epoch=39960//BATCH_SIZE,
         epochs=400,
         lr_decay=FLAGS.lr_decay,
         logdir=LOGDIR,
         verbose=2,
-        workers=FLAGS.no_thread,
         summary_ops=[custom_summary]
     )
 

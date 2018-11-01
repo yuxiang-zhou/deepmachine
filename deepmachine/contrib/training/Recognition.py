@@ -31,47 +31,31 @@ def main():
     
     # Dataset
     def build_data():
-        class H5Data(dm.utils.Sequence):
+        features = dm.utils.union_dict([
+            dm.data.provider.features.image_feature(),
+            dm.data.provider.features.matrix_feature('uv'),
+            dm.data.provider.features.array_feature('label'),
+            dm.data.provider.features.array_feature('landmarks'),
+        ])
+        dataset = dm.data.provider.TFRecordProvider(
+            FLAGS.dataset_path,
+            features,
+            resolvers={
+                'image': dm.data.provider.resolvers.image_resolver,
+                'uv': partial(dm.data.provider.resolvers.tensor_resolver, input_shape=[INPUT_SHAPE,INPUT_SHAPE, 3]),
+                'landmarks': partial(dm.data.provider.resolvers.heatmap_resolver, n_lms=5, output_shape=[INPUT_SHAPE, INPUT_SHAPE]),
+                'label': partial(dm.data.provider.resolvers.label_resolver, input_shape=[1], n_class=N_CLASSES),
+            }
+        )
+        dataset = dm.data.provider.DatasetQueue(
+            dataset, n_proccess=FLAGS.no_thread, batch_size=BATCH_SIZE)
+        tf_data = dataset.get('image', 'uv', 'landmarks', 'label')
 
-            def __init__(self, fp, batch_size=BATCH_SIZE):
-                self.train_data = h5py.File(fp, 'r')
-                # self.train_data.swmr_mode = True
-                self.batch_size = batch_size
-                self.size = self.train_data['image'].len()
-                self.indexes = list(range(self.size))
-                np.random.shuffle(self.indexes)
-                super().__init__()
+        batch_input = tf.concat([
+            tf_data['image'], tf_data['uv']
+        ], axis=-1)
 
-            def __len__(self):
-                return self.size // self.batch_size
-
-            def __getitem__(self, idx):
-                # training data
-                batch_train_data = np.array([
-                    # self.train_data['data'][self.indexes[i]]
-                    np.concatenate([
-                        self.train_data['image'][self.indexes[i]],
-                        self.train_data['uv'][self.indexes[i]],
-                        # dm.utils.lms_to_heatmap(self.train_data['lms'][self.indexes[i]], INPUT_SHAPE, INPUT_SHAPE).transpose([1,2,0])
-
-                    ], axis=-1) 
-                    for i in range(idx, idx+self.batch_size) if self.train_data['label'][self.indexes[i]][0] >= 0
-                ])
-
-                # testing data
-                batch_label = np.array([
-                    dm.utils.one_hot(self.train_data['label'][self.indexes[i]], n_parts=N_CLASSES) for i in range(idx, idx+self.batch_size) if self.train_data['label'][self.indexes[i]][0] >= 0
-                ]).squeeze()
-
-
-                return [batch_train_data, batch_label], [batch_label, batch_label]
-
-            def on_epoch_end(self, *args, **kwargs):
-                np.random.shuffle(self.indexes)
-                return super().on_epoch_end()
-
-
-        return H5Data(FLAGS.dataset_path, batch_size=BATCH_SIZE)
+        return [batch_input, tf_data['label']], [tf_data['label'], tf_data['label']]
 
     # Model
     def build_model():
@@ -114,10 +98,10 @@ def main():
     build_model().fit(
         build_data(),
         epochs=200,
+        step_per_epoch=N_CLASSES * 50 // BATCH_SIZE,
         logdir=LOGDIR,
         lr_decay=0.99,
         verbose=2,
-        workers=FLAGS.no_thread
     )
 
 

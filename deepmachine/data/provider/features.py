@@ -2,12 +2,33 @@ import tensorflow as tf
 from ...utils import union_dict
 
 
-image_feature = {
-    # images
-    'image': tf.FixedLenFeature([], tf.string),
-    'height': tf.FixedLenFeature([], tf.int64),
-    'width': tf.FixedLenFeature([], tf.int64),
-}
+def image_feature(key='image'):
+    return {
+        key: tf.FixedLenFeature([], tf.string),
+        '%s/height'%key: tf.FixedLenFeature([], tf.int64),
+        '%s/width'%key: tf.FixedLenFeature([], tf.int64),
+    }
+
+def array_feature(key='data'):
+    return {
+        key: tf.FixedLenFeature([], tf.string),
+        '%s/size'%key: tf.FixedLenFeature([], tf.int64),
+    }
+
+def matrix_feature(key='data'):
+    return {
+        key: tf.FixedLenFeature([], tf.string),
+        '%s/height'%key: tf.FixedLenFeature([], tf.int64),
+        '%s/width'%key: tf.FixedLenFeature([], tf.int64),
+    }
+
+def tensor_feature(key='data'):
+    return {
+        key: tf.FixedLenFeature([], tf.string),
+        '%s/height'%key: tf.FixedLenFeature([], tf.int64),
+        '%s/width'%key: tf.FixedLenFeature([], tf.int64),
+        '%s/depth'%key: tf.FixedLenFeature([], tf.int64),
+    }
 
 iuv_feature = {
     # iuv
@@ -71,17 +92,17 @@ FeatureIUVHMSVS = {
     'restore_scale': tf.FixedLenFeature([], tf.float32)
 }
 FeatureIUVHMSVS.update(
-    union_dict([image_feature, iuv_feature, svs_feature, lms_feature])
+    union_dict([image_feature(), iuv_feature, svs_feature, lms_feature])
 )
 
-FeatureIUVHM = union_dict([image_feature, iuv_feature, lms_feature])
-FeatureIUV = union_dict([image_feature, iuv_feature])
+FeatureIUVHM = union_dict([image_feature(), iuv_feature, lms_feature])
+FeatureIUV = union_dict([image_feature(), iuv_feature])
 
 FeatureHeatmap = {
     'visible': tf.FixedLenFeature([], tf.string),
     'marked': tf.FixedLenFeature([], tf.string),
 }
-FeatureHeatmap.update(union_dict([image_feature, lms_feature]))
+FeatureHeatmap.update(union_dict([image_feature(), lms_feature]))
 
 
 FeatureRLMS = {
@@ -91,4 +112,4 @@ FeatureRLMS = {
     'visible': tf.FixedLenFeature([], tf.string),
     'marked': tf.FixedLenFeature([], tf.string),
 }
-FeatureRLMS.update(union_dict([image_feature]))
+FeatureRLMS.update(union_dict([image_feature()]))

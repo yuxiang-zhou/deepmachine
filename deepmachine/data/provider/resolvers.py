@@ -36,11 +36,11 @@ def dummy_seq_resolver(features, *args, **kwargs):
     return dummy_sequences
 
 
-def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
+def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), key='image', output_shape=[256, 256]):
     # load features
-    image = tf.image.decode_jpeg(features['image'], channels=3)
-    image_height = tf.to_int32(features['height'])
-    image_width = tf.to_int32(features['width'])
+    image = tf.image.decode_jpeg(features[key], channels=3)
+    image_height = tf.to_int32(features['%s/height'%key])
+    image_width = tf.to_int32(features['%s/width'%key])
 
     # formation
     image = tf.reshape(image, (image_height, image_width, 3))
@@ -73,9 +73,9 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
         h_aug_offset = 0
         w_aug_offset = 0
 
-    # crop to 256 * 256
-    target_h = tf.to_int32(256)
-    target_w = tf.to_int32(256)
+    # crop to output_shape
+    target_h = tf.to_int32(output_shape[0])
+    target_w = tf.to_int32(output_shape[1])
     offset_h = tf.to_int32((image_height - target_h) / 2)
     offset_w = tf.to_int32((image_width - target_w) / 2)
 
@@ -86,7 +86,7 @@ def image_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0])):
         image, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    image.set_shape([256, 256, 3])
+    image.set_shape(output_shape + [3])
 
     return image
 
@@ -104,19 +104,19 @@ def uvxyz_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), d
     return uvxyz
 
 
-def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), n_lms=16, flip_transformation=None):
+def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), n_lms=16, flip_transformation=None, key='landmarks', output_shape=[256, 256]):
     if flip_transformation is None:
         flip_transformation = list(range(n_lms))
 
     # load features
-    n_landmarks = tf.to_int32(features['n_landmarks'])
-    gt_lms = tf.decode_raw(features['gt'], tf.float32)
+    n_landmarks = tf.to_int32(features['%s/count'%key])
+    gt_lms = tf.decode_raw(features[key], tf.float32)
     if 'visible' in features:
-        visible = tf.to_int32(tf.decode_raw(features['visible'], tf.int64))
+        visible = tf.to_int32(tf.decode_raw(features['%s/visible'%key], tf.int64))
     else:
         visible = tf.range(n_landmarks)
-    image_height = tf.to_int32(features['height'])
-    image_width = tf.to_int32(features['width'])
+    image_height = tf.to_int32(output_shape[0])
+    image_width = tf.to_int32(output_shape[1])
 
     # formation
     gt_lms = tf.reshape(gt_lms, (n_landmarks, 2))
@@ -161,9 +161,9 @@ def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
         h_aug_offset = 0
         w_aug_offset = 0
 
-    # crop to 256 * 256
-    target_h = tf.to_int32(256)
-    target_w = tf.to_int32(256)
+    # crop to output_shape[0]
+    target_h = tf.to_int32(output_shape[0])
+    target_w = tf.to_int32(output_shape[1])
     offset_h = tf.to_int32((image_height - target_h) / 2)
     offset_w = tf.to_int32((image_width - target_w) / 2)
 
@@ -174,7 +174,7 @@ def heatmap_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]),
         gt_heatmap, offset_h, offset_w, target_h, target_w)
 
     # shape defination
-    gt_heatmap.set_shape([256, 256, n_lms])
+    gt_heatmap.set_shape(output_shape + [n_lms])
 
     return gt_heatmap
 
@@ -650,17 +650,61 @@ def decode_mask(feature, *args, **kargs):
     return tf.image.decode_png(feature['mask'])
 
 
-def matrix_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), dtype=tf.float32, key='data'):
+def array_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), dtype=tf.float32, key='data', input_shape=None):
+    # load features
+    size = tf.to_int32(features['%s/size'%key])
+
+    m = tf.decode_raw(features[key], dtype)
+    m = tf.reshape(m, [size])
+    
+    # shape defination
+    if input_shape:
+        m.set_shape(input_shape)
+    return m
+
+def matrix_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), dtype=tf.float32, key='data', input_shape=None):
     # load features
     height = tf.to_int32(features['%s/height'%key])
     width = tf.to_int32(features['%s/width'%key])
 
     m = tf.decode_raw(features[key], dtype)
-    m = tf.reshape(m, [height, width, -1])
+    m = tf.reshape(m, [height, width])
+
+    # shape defination
+    if input_shape:
+        m.set_shape(input_shape)
+    
+    return m
+
+def tensor_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), dtype=tf.float32, key='data', input_shape=None):
+    # load features
+    height = tf.to_int32(features['%s/height'%key])
+    width = tf.to_int32(features['%s/width'%key])
+    depth = tf.to_int32(features['%s/depth'%key])
+
+    m = tf.decode_raw(features[key], dtype)
+    m = tf.reshape(m, [height, width, depth])
+
+    # shape defination
+    if input_shape:
+        m.set_shape(input_shape)
+    
+    return m
+
+def label_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), dtype=tf.float32, key='data', n_class=None, input_shape=None):
+    # load features
+    size = tf.to_int32(features['%s/size'%key])
+
+    m = tf.decode_raw(features[key], dtype)
+    m = tf.reshape(m, [size])
+    # shape defination
+    if input_shape:
+        m.set_shape(input_shape)
+
+    one_hot = tf.contrib.layers.one_hot_encoding(m, n_class)
     
     # shape defination
-    m.set_shape([height, width, 3])
-    return m
+    return one_hot
 
 ResolveMaskedImage = {
     'inputs': decode_jpeg,

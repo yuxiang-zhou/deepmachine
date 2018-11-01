@@ -33,7 +33,7 @@ class TFRecordProvider(Provider):
                  filename,
                  features,
                  batch_size=1,
-                 augmentation=True,
+                 augmentation=False,
                  resolvers={}):
         self._filename = filename
         self._features = features
@@ -42,8 +42,8 @@ class TFRecordProvider(Provider):
         self._key_resolver = resolvers
         self._count = None
 
-    def register_key_resolver(self, key, resolver):
-        self._key_resolver[key] = resolver
+    def register_key_resolver(self, key, resolver, **kwargs):
+        self._key_resolver[key] = functools.partial(resolver, **kwargs)
 
     def get(self, *keys):
         data = self._get_data_protobuff(self._filename, *keys)
@@ -95,7 +95,8 @@ class TFRecordProvider(Provider):
             fn = functools.partial(
                 self._key_resolver[key],
                 aug=self._augmentation,
-                aug_args=augmentation_args
+                aug_args=augmentation_args,
+                key=key
             )
             data.append(fn(features))
 
@@ -190,7 +191,8 @@ class TFDirectoryProvider(Provider):
                 fn = functools.partial(
                     self._key_resolver[key],
                     aug=self._augmentation,
-                    aug_args=augmentation_args
+                    aug_args=augmentation_args,
+                    key=key
                 )
                 tensors.append(fn(tf_file_contents))
 
