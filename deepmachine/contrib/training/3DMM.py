@@ -10,6 +10,7 @@ import h5py
 import pandas as pd
 
 from menpo.shape import ColouredTriMesh, PointCloud
+from menpo.image import Image
 from menpo.transform import Homogeneous
 from menpo3d.rasterize import rasterize_mesh
 from pathlib import Path
@@ -62,13 +63,16 @@ def main():
         FLAGS.meta_path + '/lsfm_LDUA.pkl', encoding='latin1')
 
     def build_data():
+
+        fd = h5py.File(FLAGS.dataset_path, 'r')
         
         class H5Data(dm.utils.Sequence):
 
-            def __init__(self, fp, batch_size=BATCH_SIZE):
-                self.train_data = h5py.File(fp, 'r')
+            def __init__(self, fd, batch_size=BATCH_SIZE):
+                self.train_data = fd
+                self.train_data.swmr_mode = True
                 self.batch_size = batch_size
-                self.size = self.train_data['image'].len()
+                self.size = 39960
                 self.indexes = list(range(self.size))
                 np.random.shuffle(self.indexes)
                 super().__init__()
@@ -86,23 +90,30 @@ def main():
                 for i in indexes:
                     if self.train_data['label'][i] == 1:
                         try:
+                            mesh = self.train_data['mesh'][i]
+                            mesh_colour = self.train_data['mesh_colour'][i]
+                            mesh_mask = self.train_data['mesh_mask'][i].reshape([-1,1])
+                            image = self.train_data['image'][i]
+                            
                             # mesh
                             batch_mesh.append(
-                                self.train_data['mesh'][i]
+                                mesh
                             )
 
                             batch_mesh_colour.append(
-                                self.train_data['mesh_colour'][i]
+                                mesh_colour
                             )
 
                             batch_mesh_mask.append(
-                                self.train_data['mesh_mask'][i].reshape([-1,1])
+                                mesh_mask
                             )
 
                             # images
                             batch_img.append(
-                                self.train_data['image'][i]
+                                image
                             )
+
+                            
                         except:
                             pass
 
@@ -125,17 +136,18 @@ def main():
                 np.random.shuffle(self.indexes)
                 return super().on_epoch_end()
         
-        return H5Data(FLAGS.dataset_path, batch_size=BATCH_SIZE)
+        return H5Data(fd, batch_size=BATCH_SIZE)
 
     def build_model(inputs_channels=6, n_gpu=n_gpu):
 
         # define components
         ## image encoder
         def build_img_encoder():
-            input_img = dm.layers.Input(shape=[INPUT_SHAPE, INPUT_SHAPE, 3], name='input_img')
+            input_img = dm.layers.Input(shape=[256, 256, 3], name='input_img')
+            input_img_resize = dm.layers.Lambda(lambda x: dm.tf.image.resize_images(x, [INPUT_SHAPE, INPUT_SHAPE]))(input_img)
 
             img_embedding = dm.networks.Encoder2D(
-                input_img, EMBEDING, depth=4, nf=64)
+                input_img_resize, EMBEDING, depth=4, nf=32)
 
             return dm.Model(input_img, img_embedding, name='image_encoder')
 
@@ -164,7 +176,7 @@ def main():
         # Mesh AE stream
         ## define inputs
         input_mesh = dm.layers.Input(shape=[N_VERTICES, 6], name='input_mesh')
-        input_image = dm.layers.Input(shape=[INPUT_SHAPE, INPUT_SHAPE, 3], name='input_image')
+        input_image = dm.layers.Input(shape=[256, 256, 3], name='input_image')
 
         ## define components
         img_encoder_model = build_img_encoder()

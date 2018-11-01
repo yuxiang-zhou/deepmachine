@@ -22,7 +22,7 @@ tf.app.flags.DEFINE_integer('n_epoch', 200,
 tf.app.flags.DEFINE_integer('verbose', 2,
                     '''Stdout infomation details''')
 
-tf.app.flags.DEFINE_integer('no_thread', 4,
+tf.app.flags.DEFINE_integer('no_thread', 1,
                     '''Number of data reading threads''')
                     
 tf.app.flags.DEFINE_float('lr', 2e-4,

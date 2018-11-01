@@ -3,12 +3,15 @@ import menpo.io as mio
 import scipy.io as sio
 from io import BytesIO
 from menpo.shape import PointCloud
+from menpo.image import Image
 
 import tensorflow as tf
 
 
 def get_jpg_string(im):
     # Gets the serialized jpg from a menpo `Image`.
+    if not isinstance(im, Image):
+        im = Image.init_from_channels_at_back(im)
     fp = BytesIO()
     mio.export_image(im, fp, extension='jpg')
     fp.seek(0)
@@ -33,13 +36,13 @@ def float_feauture(value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
-def image_builder(data):
-    image = data['image']
+def image_builder(data, key='image'):
+    image = data[key]
 
     return {
-        'image': bytes_feauture(get_jpg_string(image)),
-        'height': int_feauture(image.shape[0]),
-        'width': int_feauture(image.shape[1])
+        key: bytes_feauture(get_jpg_string(image)),
+        '%s/height'%key: int_feauture(image.shape[0]),
+        '%s/width'%key: int_feauture(image.shape[1])
     }
 
 def uvxyz_builder(data):
@@ -64,30 +67,57 @@ def relative_landmark_builder(data):
     }
 
 
-def landmark_builder(data, visible_label=None, marked_label=None):
+def landmark_builder(data, key='landmarks', visible_label=None, marked_label=None):
     
-    landmarks = data['landmark']
+    landmarks = data[key]
     if isinstance(landmarks, PointCloud):
         landmarks = landmarks.points
         
     results = {
-        'n_landmarks': int_feauture(landmarks.shape[0]),
-        'gt': bytes_feauture(landmarks.astype(np.float32).tobytes()),
+        '%s/count'%key: int_feauture(landmarks.shape[0]),
+        key: bytes_feauture(landmarks.astype(np.float32).tobytes()),
     }
 
     if visible_label:
         visible_pts = data[visible_label]
         results.update({
-            'visible': bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
+            '%s/visible'%key: bytes_feauture(np.array(visible_pts).astype(np.int64).tobytes()),
         })
 
     if marked_label:
         marked_index = data[marked_label]
         results.update({
-            'marked': bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
+            '%s/marked'%key: bytes_feauture(np.array(marked_index).astype(np.int64).tobytes()),
         })
 
     return results
+
+def tensor_builder(data, key='data', dtype=np.float32):
+    m = data[key]
+
+    return {
+        '%s'%key: bytes_feauture(m.astype(dtype).tobytes()),
+        '%s/height'%key: int_feauture(m.shape[0]),
+        '%s/width'%key: int_feauture(m.shape[1]),
+        '%s/depth'%key: int_feauture(m.shape[2])
+    }
+
+def matrix_builder(data, key='data', dtype=np.float32):
+    m = data[key]
+
+    return {
+        '%s'%key: bytes_feauture(m.astype(dtype).tobytes()),
+        '%s/height'%key: int_feauture(m.shape[0]),
+        '%s/width'%key: int_feauture(m.shape[1])
+    }
+
+def array_builder(data, key='data', dtype=np.float32):
+    m = data[key]
+
+    return {
+        '%s'%key: bytes_feauture(m.astype(dtype).tobytes()),
+        '%s/size'%key: int_feauture(m.shape[0]),
+    }
 
 def iuv_builder(data):
     image = data['iuv']

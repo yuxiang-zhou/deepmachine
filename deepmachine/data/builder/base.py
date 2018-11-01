@@ -1,4 +1,5 @@
 from pathlib import Path
+from functools import partial
 import tensorflow as tf
 
 
@@ -7,8 +8,8 @@ class TFRecordBuilder(object):
     def __init__(self):
         self._feature_builder = []
 
-    def add_feature_builder(self, builder):
-        self._feature_builder.append(builder)
+    def add_feature_builder(self, builder, **kwargs):
+        self._feature_builder.append(partial(builder, **kwargs))
 
     def generate(self, iterator, store_path):
         # load annotations

@@ -22,9 +22,9 @@ def main():
     tf.reset_default_graph()
     BATCH_SIZE = FLAGS.batch_size
     INPUT_SHAPE = 112
-    INPUT_CHANNELS = 10
+    INPUT_CHANNELS = 5
     NF = 64
-    N_CLASSES = 500
+    N_CLASSES = 8631
     LR = FLAGS.lr
     LOGDIR = "{}/model_{}".format(FLAGS.logdir, time.time()
                                   ) if 'model_' not in FLAGS.logdir else FLAGS.logdir
@@ -35,8 +35,9 @@ def main():
 
             def __init__(self, fp, batch_size=BATCH_SIZE):
                 self.train_data = h5py.File(fp, 'r')
+                # self.train_data.swmr_mode = True
                 self.batch_size = batch_size
-                self.size = self.train_data['data'].len()
+                self.size = self.train_data['image'].len()
                 self.indexes = list(range(self.size))
                 np.random.shuffle(self.indexes)
                 super().__init__()
@@ -49,15 +50,17 @@ def main():
                 batch_train_data = np.array([
                     # self.train_data['data'][self.indexes[i]]
                     np.concatenate([
-                        self.train_data['data'][self.indexes[i]],
-                        dm.utils.lms_to_heatmap(self.train_data['lms'][self.indexes[i]], INPUT_SHAPE, INPUT_SHAPE).transpose([1,2,0])
+                        self.train_data['image'][self.indexes[i]],
+                        self.train_data['uv'][self.indexes[i]],
+                        # dm.utils.lms_to_heatmap(self.train_data['lms'][self.indexes[i]], INPUT_SHAPE, INPUT_SHAPE).transpose([1,2,0])
+
                     ], axis=-1) 
-                    for i in range(idx, idx+self.batch_size)
+                    for i in range(idx, idx+self.batch_size) if self.train_data['label'][self.indexes[i]][0] >= 0
                 ])
 
                 # testing data
                 batch_label = np.array([
-                    dm.utils.one_hot(self.train_data['label'][self.indexes[i]], n_parts=N_CLASSES) for i in range(idx, idx+self.batch_size)
+                    dm.utils.one_hot(self.train_data['label'][self.indexes[i]], n_parts=N_CLASSES) for i in range(idx, idx+self.batch_size) if self.train_data['label'][self.indexes[i]][0] >= 0
                 ]).squeeze()
 
 

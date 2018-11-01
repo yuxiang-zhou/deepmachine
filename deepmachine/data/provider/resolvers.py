@@ -650,6 +650,18 @@ def decode_mask(feature, *args, **kargs):
     return tf.image.decode_png(feature['mask'])
 
 
+def matrix_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), dtype=tf.float32, key='data'):
+    # load features
+    height = tf.to_int32(features['%s/height'%key])
+    width = tf.to_int32(features['%s/width'%key])
+
+    m = tf.decode_raw(features[key], dtype)
+    m = tf.reshape(m, [height, width, -1])
+    
+    # shape defination
+    m.set_shape([height, width, 3])
+    return m
+
 ResolveMaskedImage = {
     'inputs': decode_jpeg,
     'masks': decode_mask
