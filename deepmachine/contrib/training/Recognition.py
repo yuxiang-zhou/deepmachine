@@ -38,14 +38,12 @@ def main():
             dm.data.provider.features.lms_feature('landmarks'),
         ])
 
-        print(features)
-
         dataset = dm.data.provider.TFRecordProvider(
             FLAGS.dataset_path,
             features,
             resolvers={
-                'image': dm.data.provider.resolvers.image_resolver,
-                'uv': partial(dm.data.provider.resolvers.tensor_resolver, input_shape=[INPUT_SHAPE,INPUT_SHAPE, 3]),
+                'image': partial(dm.data.provider.resolvers.image_resolver, output_shape=[INPUT_SHAPE, INPUT_SHAPE]),
+                'uv': partial(dm.data.provider.resolvers.tensor_resolver, input_shape=[INPUT_SHAPE,INPUT_SHAPE, 2]),
                 'landmarks': partial(dm.data.provider.resolvers.heatmap_resolver, n_lms=5, output_shape=[INPUT_SHAPE, INPUT_SHAPE]),
                 'label': partial(dm.data.provider.resolvers.label_resolver, input_shape=[1], n_class=N_CLASSES),
             }

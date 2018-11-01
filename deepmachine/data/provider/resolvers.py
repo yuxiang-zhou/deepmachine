@@ -703,6 +703,7 @@ def label_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), d
         m.set_shape(input_shape)
 
     one_hot = tf.contrib.layers.one_hot_encoding(m, n_class)
+    one_hot = tf.squeeze(one_hot)
     
     # shape defination
     return one_hot
