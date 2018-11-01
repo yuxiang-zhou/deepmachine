@@ -697,6 +697,7 @@ def label_resolver(features, aug=False, aug_args=tf.constant([0, 0, 1, 0, 0]), d
 
     m = tf.decode_raw(features[key], dtype)
     m = tf.reshape(m, [size])
+    m = tf.cast(m, tf.int64)
     # shape defination
     if input_shape:
         m.set_shape(input_shape)
