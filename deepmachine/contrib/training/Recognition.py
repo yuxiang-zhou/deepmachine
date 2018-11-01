@@ -33,9 +33,9 @@ def main():
     def build_data():
         features = dm.utils.union_dict([
             dm.data.provider.features.image_feature(),
-            dm.data.provider.features.matrix_feature('uv'),
+            dm.data.provider.features.tensor_feature('uv'),
             dm.data.provider.features.array_feature('label'),
-            dm.data.provider.features.array_feature('landmarks'),
+            dm.data.provider.features.lms_feature('landmarks'),
         ])
         dataset = dm.data.provider.TFRecordProvider(
             FLAGS.dataset_path,

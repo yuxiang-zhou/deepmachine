@@ -9,6 +9,25 @@ def image_feature(key='image'):
         '%s/width'%key: tf.FixedLenFeature([], tf.int64),
     }
 
+def lms_feature(key='landmarks',visible_label=None, marked_label=None):
+    # landmarks
+    f = {
+        key: tf.FixedLenFeature([], tf.string),
+        '%s/count': tf.FixedLenFeature([], tf.int64),
+    }
+    if visible_label:
+        f.update({
+            '%s/visible'%key: tf.FixedLenFeature([], tf.string)
+        })
+
+    if visible_label:
+        f.update({
+            '%s/marked'%key: tf.FixedLenFeature([], tf.string)
+        })
+
+    return f
+
+
 def array_feature(key='data'):
     return {
         key: tf.FixedLenFeature([], tf.string),
@@ -51,12 +70,6 @@ svs_feature = {
     'svs': tf.FixedLenFeature([], tf.string),
 }
 
-lms_feature = {
-    # landmarks
-    'n_landmarks': tf.FixedLenFeature([], tf.int64),
-    'gt': tf.FixedLenFeature([], tf.string),
-}
-
 FeatureSequence = {
     # sequences
     'frames': tf.VarLenFeature(tf.string),
@@ -92,17 +105,17 @@ FeatureIUVHMSVS = {
     'restore_scale': tf.FixedLenFeature([], tf.float32)
 }
 FeatureIUVHMSVS.update(
-    union_dict([image_feature(), iuv_feature, svs_feature, lms_feature])
+    union_dict([image_feature(), iuv_feature, svs_feature, lms_feature()])
 )
 
-FeatureIUVHM = union_dict([image_feature(), iuv_feature, lms_feature])
+FeatureIUVHM = union_dict([image_feature(), iuv_feature, lms_feature()])
 FeatureIUV = union_dict([image_feature(), iuv_feature])
 
 FeatureHeatmap = {
     'visible': tf.FixedLenFeature([], tf.string),
     'marked': tf.FixedLenFeature([], tf.string),
 }
-FeatureHeatmap.update(union_dict([image_feature(), lms_feature]))
+FeatureHeatmap.update(union_dict([image_feature(), lms_feature()]))
 
 
 FeatureRLMS = {
