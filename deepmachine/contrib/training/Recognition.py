@@ -56,7 +56,10 @@ def main():
             tf_data['image'], tf_data['uv']
         ], axis=-1)
 
-        return [batch_input, tf_data['label']], [tf_data['label'], tf_data['label']]
+        label = tf_data['label']
+        label = tf.squeeze(label)
+
+        return [batch_input, label], [label, label]
 
     # Model
     def build_model():
@@ -98,8 +101,8 @@ def main():
 
     build_model().fit(
         build_data(),
-        epochs=200,
-        step_per_epoch=N_CLASSES * 50 // BATCH_SIZE,
+        epochs=30,
+        step_per_epoch=1,#N_CLASSES * 50 // BATCH_SIZE,
         logdir=LOGDIR,
         lr_decay=0.99,
         verbose=2,

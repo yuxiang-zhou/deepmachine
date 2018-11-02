@@ -55,7 +55,7 @@ class TFRecordProvider(Provider):
             tensors.append(name)
 
         inputs_batch = tf.train.shuffle_batch(
-            tensors, self._batch_size, 100, 20, 4)
+            tensors, self._batch_size, self._batch_size * 100, self._batch_size * 20, 4)
 
         retval = {}
         for k, b in zip(keys, inputs_batch):

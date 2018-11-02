@@ -142,9 +142,33 @@ def main():
         output_mesh_ae = decoder_model(mesh_encoder_model(input_mesh))
         output_mesh_3dmm = decoder_model(img_encoder_model(input_image))
 
+        ## custom losses
+        def masked_mae(gt_y, pred_y):
+            gt_mask = gt_y[...,-1:]
+            gt_mesh = gt_y[...,:-1]
+            return dm.losses.mae(gt_mesh*gt_mask, pred_y*gt_mask)
+
+
+        # model definition
+        model_ae_mesh = dm.DeepMachine(
+            inputs=[input_mesh], 
+            outputs=[output_mesh_ae],
+            name='MeshAutoEncoder'
+        )
+        if n_gpu > 1:
+            model_ae_mesh = multi_gpu_model(model_ae_mesh, gpus=n_gpu)
+
+        model_ae_mesh.compile(
+            optimizer=dm.optimizers.Adam(lr=LR),
+            loss=[masked_mae]
+        )
+
+        mesh_encoder_model.trainable = False
+        decoder_model.trainable = False
+        model_ae_mesh.trainable = False
         model_3dmm = dm.DeepMachine(
-            inputs=[input_mesh, input_image], 
-            outputs=[output_mesh_ae, output_mesh_3dmm],
+            inputs=[input_image], 
+            outputs=[output_mesh_3dmm],
             name='MeshStream'
         )
 
@@ -153,38 +177,73 @@ def main():
             model_3dmm = multi_gpu_model(model_3dmm, gpus=n_gpu)
 
         ## compile mesh stream
-        def masked_mae(gt_y, pred_y):
-            gt_mask = gt_y[...,-1:]
-            gt_mesh = gt_y[...,:-1]
-            return dm.losses.mae(gt_mesh*gt_mask, pred_y*gt_mask)
-
         model_3dmm.compile(
             optimizer=dm.optimizers.Adam(lr=LR),
-            loss=[masked_mae, masked_mae]
+            loss=[masked_mae]
         )
 
-        return model_3dmm
+        return model_ae_mesh, model_3dmm
 
 
-    def custom_summary(train_in, train_out, predict_y):
+    # ### Training
+    def train_op(models, data, i_epoch, i_batch, epoch_end, training_history=None, **kwargs):
+        model_ae_mesh, model_3dmm = models
+        [input_mesh, input_image], [mesh_gt, _] = dm.engine.training.tf_dataset_adapter(data)
+        sess = dm.K.get_session()
+        # ----------------------
+        #  Train AutoEncoder
+        # ----------------------
+        loss_ae = model_ae_mesh.train_on_batch(input_mesh, mesh_gt)
 
-        return {
-            'input/mesh': dm.utils.mesh.render_meshes(train_in[0][:4], trilist),
-            'pred/mesh': dm.utils.mesh.render_meshes(predict_y[0][:4], trilist),
-            'gt/mesh': dm.utils.mesh.render_meshes(train_out[0][:4,:,:6], trilist),
-         }
+        # ------------------
+        #  Train 3DMM
+        # ------------------
+        loss_3dmm = model_3dmm.train_on_batch(input_image, mesh_gt)
 
-    training_generator = build_data()
-    model_3dmm = build_model()
+        logs = dm.utils.Summary(
+            {
+                "losses/AE": loss_ae,
+                "losses/3dmm": loss_3dmm,
+                "learning_rate/ae": model_ae_mesh.optimizer.lr.eval(sess),
+                "learning_rate/3dmm": model_3dmm.optimizer.lr.eval(sess),
+            }
+        )
 
-    results = model_3dmm.fit(
-        training_generator,
-        step_per_epoch=39960//BATCH_SIZE,
-        epochs=400,
-        lr_decay=FLAGS.lr_decay,
+        if epoch_end:
+            ae_mesh = model_ae_mesh.predict(input_mesh)
+            pred_mesh = model_3dmm.predict(input_image)
+            logs.update_images({
+                'inputs/image': input_image,
+                'pred/mesh/AE': dm.utils.mesh.render_meshes(ae_mesh[:4], trilist),
+                'pred/mesh/3dmm': dm.utils.mesh.render_meshes(pred_mesh[:4], trilist),
+                'gt/mesh': dm.utils.mesh.render_meshes(input_mesh[:4], trilist),
+            })
+
+        return logs
+
+
+    train_tfrecord = build_data()
+    models = build_model()
+
+    lr_decay_m1 = dm.callbacks.LearningRateScheduler(
+        schedule=lambda epoch: LR * FLAGS.lr_decay ** epoch)
+    lr_decay_m1.set_model(models[0])
+    lr_decay_m2 = dm.callbacks.LearningRateScheduler(
+        schedule=lambda epoch: LR * FLAGS.lr_decay ** epoch)
+    lr_decay_m2.set_model(models[1])
+
+    history = dm.engine.training.train_monitor(
+        models,
+        train_tfrecord, 
+        train_op,
+        epochs=200, 
+        step_per_epoch=4995,
+        callbacks=[
+            lr_decay_m1,
+            lr_decay_m2
+        ],
+        verbose=FLAGS.verbose,
         logdir=LOGDIR,
-        verbose=2,
-        summary_ops=[custom_summary]
     )
 
 if __name__ == '__main__':

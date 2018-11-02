@@ -13,6 +13,8 @@ setup(
     install_requires=[
         'cython',
         'numpy',
+        'h5py',
+        'jupyter',
         'scikit-image',
         'scikit-learn',
         'tensorflow-gpu',

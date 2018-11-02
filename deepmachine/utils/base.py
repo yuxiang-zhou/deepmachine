@@ -43,6 +43,12 @@ class Summary(object):
     def items(self, *args, **kwargs):
         return self.scalars.items(*args, **kwargs)
 
+    def __getitem__(self,item):
+        return self.scalars[item]
+
+    def __setitem__(self, idx, value):
+        self.scalars[idx] = value
+
     def update_scalars(self, data):
         self.scalars.update(data)
 
