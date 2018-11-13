@@ -187,6 +187,9 @@ class Monitor(keras.callbacks.Callback):
         for m in self.models:
             if m and isinstance(m, keras.Model):
                 m.summary()
+                m_json = m.to_json()
+                with open("{}/{}.json".format(self.logdir, m.name), "w") as json_file:
+                    json_file.write(m_json)
 
         # restore weights
         print(self.logdir)

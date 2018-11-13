@@ -18,17 +18,27 @@ from deepmachine.utils.machine import multi_gpu_model
 # flag definitions
 from deepmachine.flags import FLAGS
 
+def format_folder(FLAGS):
+    post_fix = 'lr{:.5f}_d{:.3f}_b{:03d}'.format(
+        FLAGS.lr, FLAGS.lr_decay, FLAGS.batch_size
+    )
+
+    logdir = FLAGS.logdir if 'model_' in FLAGS.logdir else "{}/model_{}".format(
+        FLAGS.logdir, post_fix
+    )
+
+    return logdir
+
 def main():
     tf.reset_default_graph()
     BATCH_SIZE = FLAGS.batch_size
     INPUT_SHAPE = 112
-    INPUT_CHANNELS = 5
+    INPUT_CHANNELS = 3
     NF = 64
     N_CLASSES = 8631
     LR = FLAGS.lr
-    LOGDIR = "{}/model_{}".format(FLAGS.logdir, time.time()
-                                  ) if 'model_' not in FLAGS.logdir else FLAGS.logdir
-    
+    LOGDIR = format_folder(FLAGS)
+
     # Dataset
     def build_data():
         features = dm.utils.union_dict([
@@ -52,10 +62,11 @@ def main():
             dataset, n_proccess=FLAGS.no_thread, batch_size=BATCH_SIZE)
         tf_data = dataset.get('image', 'uv', 'landmarks', 'label')
 
-        batch_input = tf.concat([
-            tf_data['image'], tf_data['uv']
-        ], axis=-1)
+        # batch_input = tf.concat([
+        #     tf_data['image'], tf_data['uv']
+        # ], axis=-1)
 
+        batch_input = tf_data['image']
         label = tf_data['label']
         label = tf.squeeze(label)
 
@@ -65,22 +76,20 @@ def main():
     def build_model():
         input_image = dm.layers.Input(
             shape=[INPUT_SHAPE, INPUT_SHAPE, INPUT_CHANNELS], name='input_image')
-        input_label = dm.layers.Input(
-            shape=[N_CLASSES], name='input_label')
 
         embeding, softmax = dm.networks.ArcFace(
-            [input_image, input_label], 512, nf=NF, n_classes=N_CLASSES,
+            [input_image], 512, nf=NF, n_classes=N_CLASSES,
             batch_norm='BatchNormalization'
         )
         
         train_model = dm.DeepMachine(
-            inputs=[input_image, input_label], outputs=[embeding, softmax])
+            inputs=[input_image], outputs=[embeding, softmax])
 
         n_gpu = len(FLAGS.gpu.split(','))
         if n_gpu > 1:
             train_model = multi_gpu_model(train_model, gpus=n_gpu)
 
-        def arc_loss(y_true, y_pred, s=64., m1=1., m2=0.35, m3=0.):
+        def arc_loss(y_true, y_pred, s=64., m1=1., m2=0.3, m3=0.):
             # arc feature
             arc = y_pred * y_true
             arc = tf.acos(arc)
@@ -99,13 +108,34 @@ def main():
 
         return train_model
 
-    build_model().fit(
+    arcface = build_model()
+    def lr_sch_fn(epoch):
+        new_lr = LR
+        if epoch >= 15:
+            new_lr /= 10.
+
+        if epoch >= 22:
+            new_lr /= 10.
+
+        if epoch >= 26:
+            new_lr /= 10.
+
+        return new_lr 
+
+    lr_sch = dm.callbacks.LearningRateScheduler(
+        schedule=lr_sch_fn)
+    lr_sch.set_model(arcface)
+
+    arcface.fit(
         build_data(),
         epochs=30,
-        step_per_epoch=1,#N_CLASSES * 50 // BATCH_SIZE,
+        step_per_epoch=N_CLASSES * 50 // BATCH_SIZE,
         logdir=LOGDIR,
-        lr_decay=0.99,
+        lr_decay=0,
         verbose=2,
+        callbacks=[
+            lr_sch
+        ],
     )
 
 

@@ -27,6 +27,42 @@ def load_model(filepath, custom_objects={}, compile=False):
     )
 
 
+def restore_weight(model, weights):
+    w_keys = list(weights.keys())
+    for l in model.layers:
+        if l.name in w_keys:
+            if 'batch_normalization' in l.name:
+                l.set_weights([
+                    weights[l.name]['gamma:0'],
+                    weights[l.name]['beta:0'],
+                    weights[l.name]['moving_mean:0'],
+                    weights[l.name]['moving_variance:0'],
+                ])
+            elif 'conv2d' in l.name:
+                l.set_weights([
+                    weights[l.name]['kernel:0'],
+                    weights[l.name]['bias:0'],
+                ])
+            elif 'dense' in l.name:
+                l.set_weights([
+                    weights[l.name]['kernel:0'],
+                    weights[l.name]['bias:0'],
+                ])
+            elif 'mesh_conv' in l.name:
+                l.set_weights([
+                    weights[l.name]['kernel:0'],
+                ])
+            elif 'mesh_re_l_u1b' in l.name:
+                l.set_weights([
+                    weights[l.name]['kernel:0'],
+                ])
+            else:
+                raise Exception('Undefined layer: ' + l.name)
+                
+        else:
+            print('No variable found in ' + l.name + '. Skipped.')
+
+
 def _undefined_op(*args, **kwargs):
     raise NotImplementedError
 

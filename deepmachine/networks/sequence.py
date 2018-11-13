@@ -314,12 +314,7 @@ def ResNet50(inputs, output_shape, nf=64, n_residule=9, module='Residule', with_
     return net
 
 
-def ArcFace(inputs, embeding, nf=64, n_classes=None, dropout=0.3, module='Residule', **kwargs):
-
-    inputs, gt_label = inputs
-
-    module_fn = globals()['%sModule' % module] if type(
-        module) is str else module
+def ArcFace(inputs, embeding, nf=64, n_classes=None, dropout=0.3, **kwargs):
 
     net = layers.BatchNormalization()(inputs)
     # input shape: 112 * 112 * c
@@ -350,11 +345,11 @@ def ArcFace(inputs, embeding, nf=64, n_classes=None, dropout=0.3, module='Residu
     net = layers.BatchNormalization()(net)
     net = layers.Dropout(dropout)(net)
     net = layers.Flatten()(net)
-    embeding = layers.Dense(embeding, activation=None)(net)
+    embeding = layers.Dense(embeding, activation=None, name='feature_embeddings')(net)
 
     if n_classes:
-        softmax = layers.ArcDense(n_classes)(embeding)
-        return embeding, softmax
+        norm_embedding = layers.ArcDense(n_classes)(embeding)
+        return embeding, norm_embedding
 
     return embeding
 
