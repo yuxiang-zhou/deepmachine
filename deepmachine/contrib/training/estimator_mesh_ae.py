@@ -248,7 +248,7 @@ def MeshDecoder(inputs, out_channel, graph_laplacians, adj_matrices, upsamling_m
 
 # Component Definition
 
-def get_data_fn(FLAGS, N_VERTICES, INPUT_SHAPE=112):
+def get_data_fn(FLAGS, dataset_path, N_VERTICES, INPUT_SHAPE=112, is_training=True):
     BATCH_SIZE = FLAGS.batch_size
     NUM_GPUS = len(FLAGS.gpu.split(','))
 
@@ -274,7 +274,7 @@ def get_data_fn(FLAGS, N_VERTICES, INPUT_SHAPE=112):
         ])
 
         dataset = tf.data.TFRecordDataset(
-            FLAGS.dataset_path, num_parallel_reads=FLAGS.no_thread)
+            dataset_path, num_parallel_reads=FLAGS.no_thread)
 
         # Shuffle the dataset
         dataset = dataset.shuffle(
@@ -309,7 +309,10 @@ def get_data_fn(FLAGS, N_VERTICES, INPUT_SHAPE=112):
             # parse mesh
             m = tf.decode_raw(parsed_features['mesh'], tf.float32)
             m = tf.reshape(m, [-1, N_VERTICES, 3])
-            feature_dict['mesh'] = mesh_augmentation(m)
+            if is_training:
+                feature_dict['mesh'] = mesh_augmentation(m)
+            else:
+                feature_dict['mesh'] = m
 
             # parse mesh/colour
             m = tf.decode_raw(parsed_features['mesh/colour'], tf.float32)
@@ -488,6 +491,8 @@ def main():
     # flag definitions
     tf.app.flags.DEFINE_string(
         'meta_path', '/vol/atlas/homes/yz4009/databases/mesh/meta', '''path to meta files''')
+    tf.app.flags.DEFINE_string(
+        'test_path', '', '''path to test files''')
     tf.app.flags.DEFINE_integer('embedding', 128, '''embedding''')
     from deepmachine.flags import FLAGS
 
@@ -561,10 +566,23 @@ def main():
             FLAGS, graph_laplacians, downsampling_matrices, upsamling_matrices, adj_matrices, trilist, N_VERTICES, EPOCH_STEPS, TOTAL_EPOCH, FILTERS=FILTERS, EMBEDING=EMBEDING, INPUT_SHAPE=INPUT_SHAPE
         ), model_dir=LOGDIR, config=config)
 
-    # train
-    Fast_3DMM.train(get_data_fn(
-        FLAGS, N_VERTICES, INPUT_SHAPE=INPUT_SHAPE
-    ), steps=EPOCH_STEPS * TOTAL_EPOCH, hooks=[time_hist])
+    
+
+    train_spec = tf.estimator.TrainSpec(
+        input_fn=get_data_fn(
+            FLAGS, FLAGS.dataset_path, N_VERTICES, INPUT_SHAPE=INPUT_SHAPE
+        ), 
+        maxsteps=EPOCH_STEPS * TOTAL_EPOCH, 
+        hooks=[time_hist]
+    )
+    eval_spec = tf.estimator.EvalSpec(
+        input_fn=get_data_fn(
+            FLAGS, FLAGS.test_path, N_VERTICES, INPUT_SHAPE=INPUT_SHAPE, is_training=False
+        )
+    )
+
+    tf.estimator.train_and_evaluate(Fast_3DMM, train_spec, eval_spec)
+
 
 
 if __name__ == '__main__':
