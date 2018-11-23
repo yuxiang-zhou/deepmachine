@@ -24,7 +24,7 @@ import tensorflow as tf
 from pathlib import Path
 
 module_path = str(Path(os.path.abspath(__file__)).parent)
-rasterize_triangles_module = tf.load_op_library(module_path + '/kernels/rasterize_triangles_kernel.so')
+rasterize_triangles_module = tf.load_op_library(module_path + '/kernels/bazel-genfiles/rasterize_triangles_kernel.so')
 
 
 # This epsilon should be smaller than any valid barycentric reweighting factor

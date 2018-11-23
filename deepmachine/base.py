@@ -27,34 +27,38 @@ def load_model(filepath, custom_objects={}, compile=False):
     )
 
 
-def restore_weight(model, weights):
+def restore_weight(model, weights, key_mapping=None):
     w_keys = list(weights.keys())
     for l in model.layers:
-        if l.name in w_keys:
-            if 'batch_normalization' in l.name:
+        name = l.name
+        if key_mapping and name in key_mapping:
+            name = key_mapping[name]
+            
+        if name in w_keys:
+            if 'batch_normalization' in name:
                 l.set_weights([
-                    weights[l.name]['gamma:0'],
-                    weights[l.name]['beta:0'],
-                    weights[l.name]['moving_mean:0'],
-                    weights[l.name]['moving_variance:0'],
+                    weights[name]['gamma:0'],
+                    weights[name]['beta:0'],
+                    weights[name]['moving_mean:0'],
+                    weights[name]['moving_variance:0'],
                 ])
-            elif 'conv2d' in l.name:
+            elif 'conv2d' in name:
                 l.set_weights([
-                    weights[l.name]['kernel:0'],
-                    weights[l.name]['bias:0'],
+                    weights[name]['kernel:0'],
+                    weights[name]['bias:0'],
                 ])
-            elif 'dense' in l.name:
+            elif 'dense' in name:
                 l.set_weights([
-                    weights[l.name]['kernel:0'],
-                    weights[l.name]['bias:0'],
+                    weights[name]['kernel:0'],
+                    weights[name]['bias:0'],
                 ])
-            elif 'mesh_conv' in l.name:
+            elif 'mesh_conv' in name:
                 l.set_weights([
-                    weights[l.name]['kernel:0'],
+                    weights[name]['kernel:0'],
                 ])
-            elif 'mesh_re_l_u1b' in l.name:
+            elif 'mesh_re_l_u1b' in name:
                 l.set_weights([
-                    weights[l.name]['kernel:0'],
+                    weights[name]['kernel:0'],
                 ])
             else:
                 raise Exception('Undefined layer: ' + l.name)

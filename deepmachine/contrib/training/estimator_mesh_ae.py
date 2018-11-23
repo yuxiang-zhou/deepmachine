@@ -26,231 +26,13 @@ import deepmachine as dm
 from deepmachine.utils import mesh as graph
 from deepmachine.layers.mesh_renderer.mesh_renderer import mesh_renderer
 
-# Custom Layers
-
-def format_folder(FLAGS):
-    post_fix = 'lr{:02.1f}_d{:02.1f}_emb{:03d}_b{:02d}'.format(
-        FLAGS.lr, FLAGS.lr_decay, FLAGS.embedding, FLAGS.batch_size
-    )
-
-    logdir = FLAGS.logdir if 'model_' in FLAGS.logdir else "{}/model_{}".format(
-        FLAGS.logdir, post_fix
-    )
-
-    return logdir
-
-
-class MeshReLU1B(tf.keras.layers.Layer):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def build(self, input_shape):
-        """Bias and ReLU. One bias per filter."""
-
-        _, _, n_channels = input_shape.as_list()
-        # Create a trainable weight variable for this layer.
-        self.bias = self.add_variable(
-            name='kernel',
-            shape=[1, n_channels]
-        )
-
-    def call(self, x):
-        return tf.nn.relu(x + self.bias)
-
-
-class MeshReLU2B(tf.keras.layers.Layer):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-    def build(self, input_shape):
-        """Bias and ReLU. One bias per filter."""
-        _, n_vertexes, n_channels = input_shape.as_list()
-        # Create a trainable weight variable for this layer.
-        self.bias = self.add_variable(
-            name='kernel',
-            shape=[n_vertexes, n_channels])
-
-    def call(self, x):
-        return tf.nn.relu(x + self.bias)
-
-
-class MeshPoolTrans(tf.keras.layers.Layer):
-
-    def poolwT(self, x):
-        L = self._gl
-        Mp = L.shape[0]
-        _, M, Fin = x.get_shape().as_list()
-        # Rescale transform Matrix L and store as a TF sparse tensor. Copy to not modify the shared L.
-        L = scipy.sparse.csr_matrix(L)
-        L = L.tocoo()
-        indices = np.column_stack((L.row, L.col))
-        L = tf.SparseTensor(indices, L.data, L.shape)
-        L = tf.sparse_reorder(L)
-
-        x = tf.transpose(x, perm=[1, 2, 0])  # M x Fin x N
-        x = tf.reshape(x, [M, -1])  # M x Fin*N
-        x = tf.sparse_tensor_dense_matmul(L, x)  # Mp x Fin*N
-        x = tf.reshape(x, [Mp, Fin, -1])  # Mp x Fin x N
-        x = tf.transpose(x, perm=[2, 0, 1])  # N x Mp x Fin
-
-        return x
-
-    def __init__(self, graph_laplacians, **kwargs):
-        self._gl = graph_laplacians.astype(np.float32)
-        super().__init__(**kwargs)
-
-    def build(self, input_shape):
-        """Bias and ReLU. One bias per filter."""
-        super().build(input_shape)  # Be sure to call this at the end
-
-    def call(self, x):
-        return self.poolwT(x)
-
-
-MeshPool = MeshPoolTrans
-
-
-class MeshConv(tf.keras.layers.Layer):
-
-    def chebyshev5(self, x, L, Fout, nK):
-        L = L.astype(np.float32)
-        _, M, Fin = x.get_shape().as_list()
-        # Rescale Laplacian and store as a TF sparse tensor. Copy to not modify the shared L.
-        L = scipy.sparse.csr_matrix(L)
-        L = graph.rescale_L(L, lmax=2)
-        L = L.tocoo()
-        indices = np.column_stack((L.row, L.col))
-        L = tf.SparseTensor(indices, L.data, L.shape)
-        L = tf.sparse_reorder(L)
-        # Transform to Chebyshev basis
-        x0 = tf.transpose(x, perm=[1, 2, 0])  # M x Fin x N
-        x0 = tf.reshape(x0, [M, -1])  # M x Fin*N
-        x = tf.expand_dims(x0, 0)  # 1 x M x Fin*N
-
-        def concat(x, x_):
-            x_ = tf.expand_dims(x_, 0)  # 1 x M x Fin*N
-            return tf.concat([x, x_], axis=0)  # K x M x Fin*N
-        if nK > 1:
-            x1 = tf.sparse_tensor_dense_matmul(L, x0)
-            x = concat(x, x1)
-        for k in range(2, nK):
-            x2 = 2 * tf.sparse_tensor_dense_matmul(L, x1) - x0  # M x Fin*N
-            x = concat(x, x2)
-            x0, x1 = x1, x2
-        x = tf.reshape(x, [nK, M, Fin, -1])  # K x M x Fin x N
-        x = tf.transpose(x, perm=[3, 1, 2, 0])  # N x M x Fin x K
-        x = tf.reshape(x, [-1, Fin*nK])  # N*M x Fin*K
-        # Filter: Fin*Fout filters of order K, i.e. one filterbank per feature pair.
-        W = self._weight_variable
-        x = tf.matmul(x, W)  # N*M x Fout
-        out = tf.reshape(x, [-1, M, Fout])  # N x M x Fout
-        return out
-
-    def __init__(self, graph_laplacians, polynomial_order=6, nf=16, **kwargs):
-        self._gl = graph_laplacians
-        self._nf = nf
-        self._po = polynomial_order
-        super().__init__(**kwargs)
-
-    def build(self, input_shape):
-        """Bias and ReLU. One bias per filter."""
-
-        _, _, n_channels = input_shape.as_list()
-        # Create a trainable weight variable for this layer.
-        self._weight_variable = self.add_variable(
-            name='kernel',
-            shape=[n_channels * self._po, self._nf]
-        )
-
-    def call(self, x):
-        return self.chebyshev5(x, self._gl, self._nf, self._po)
-
-
-def ResiduleModule(x, out_channels, ks=3, s=1, activation=tf.nn.relu, **kwargs):
-    in_channels = x.get_shape().as_list()[-1]
-
-    # conv
-    y = tf.layers.BatchNormalization()(x)
-    y = tf.layers.conv2d(y, out_channels, ks, strides=1,
-                         padding='same', activation=activation)
-    y = tf.layers.BatchNormalization()(y)
-    y = tf.layers.conv2d(y, out_channels, ks, strides=s,
-                         padding='same', activation=activation)
-    y = tf.layers.BatchNormalization()(y)
-
-    # residule
-    if in_channels != out_channels or s > 1:
-        x = tf.layers.conv2d(x, out_channels, 1, strides=s,
-                             padding='same', activation=None)
-
-    return y + x
-
-
-def Encoder2D(inputs, embedding, depth=4, nf=32, name='image_encoder', reuse=False, **kwargs):
-
-    with tf.variable_scope(name, reuse=reuse):
-        net = tf.layers.conv2d(
-            inputs, nf, 3,
-            activation=tf.nn.relu,
-            padding='same', **kwargs)
-
-        for s in range(1, depth):
-            s = np.min([s, 4])
-            net = ResiduleModule(net, nf * 2 ** s, s=2)
-
-        s = np.min([depth, 4])
-        net = ResiduleModule(net, nf * 2 ** s, s=1)
-        net = tf.layers.batch_normalization(net)
-        net = tf.layers.dropout(net, rate=0.3)
-        net = tf.layers.flatten(net)
-        net = tf.layers.dense(net, embedding)
-
-    return net
-
-
-def MeshEncoder(inputs, embeding, graph_laplacians, downsampling_matrices, polynomial_order=6, filter_list=[16, 16, 16, 32], name='mesh_encoder', reuse=False, **kwargs):
-    with tf.variable_scope(name, reuse=reuse):
-        net = inputs
-        for nf, nl, nd in zip(filter_list, graph_laplacians, downsampling_matrices):
-
-            net = MeshConv(
-                nl, nf=nf, polynomial_order=polynomial_order, **kwargs)(net)
-            net = MeshReLU1B()(net)
-            net = MeshPool(nd)(net)
-
-        # Fully connected hidden layers.
-        net = tf.layers.flatten(net)
-        net = tf.layers.dense(net, embeding)
-
-    return net
-
-
-def MeshDecoder(inputs, out_channel, graph_laplacians, adj_matrices, upsamling_matrices, polynomial_order=6, filter_list=[16, 16, 16, 16], name='mesh_decoder', reuse=False, **kwargs):
-    with tf.variable_scope(name, reuse=reuse):
-        pool_size = list(map(lambda x: x.shape[0], adj_matrices))
-        net = inputs
-        net = tf.layers.Dense(pool_size[-1] * filter_list[-1])(net)
-        net = tf.reshape(net, [-1, pool_size[-1], filter_list[-1]])
-
-        for nf, nl, nu in zip(filter_list[::-1], graph_laplacians[-2::-1], upsamling_matrices[::-1]):
-            net = MeshPoolTrans(nu)(net)
-            net = MeshConv(
-                nl, nf=nf, polynomial_order=polynomial_order, **kwargs)(net)
-            net = MeshReLU1B()(net)
-
-        net = MeshConv(graph_laplacians[0], nf=out_channel,
-                       polynomial_order=polynomial_order, **kwargs)(net)
-
-    return net
-
+tf.logging.set_verbosity(tf.logging.INFO)
 
 # Component Definition
 
-def get_data_fn(FLAGS, dataset_path, N_VERTICES, INPUT_SHAPE=112, is_training=True):
-    BATCH_SIZE = FLAGS.batch_size
-    NUM_GPUS = len(FLAGS.gpu.split(','))
+def get_data_fn(config, dataset_path, is_training=True, format='tf'):
+    BATCH_SIZE = config.BATCH_SIZE
+    NUM_GPUS = config.NUM_GPUS
 
     def mesh_augmentation(meshes):
         # scale
@@ -264,21 +46,21 @@ def get_data_fn(FLAGS, dataset_path, N_VERTICES, INPUT_SHAPE=112, is_training=Tr
 
         return meshes
 
-    def data_fn():
+    def data_fn_tf():
 
         keys_to_features = dm.utils.union_dict([
-            dm.data.provider.features.image_feature(),
+            # dm.data.provider.features.image_feature(),
             dm.data.provider.features.matrix_feature('mesh'),
             dm.data.provider.features.matrix_feature('mesh/colour'),
             dm.data.provider.features.array_feature('mesh/mask'),
         ])
 
         dataset = tf.data.TFRecordDataset(
-            dataset_path, num_parallel_reads=FLAGS.no_thread)
+            dataset_path, num_parallel_reads=config.no_thread)
 
         # Shuffle the dataset
         dataset = dataset.shuffle(
-            buffer_size=BATCH_SIZE * NUM_GPUS * FLAGS.no_thread)
+            buffer_size=BATCH_SIZE * NUM_GPUS * config.no_thread)
 
         # Repeat the input indefinitly
         dataset = dataset.repeat()
@@ -292,32 +74,29 @@ def get_data_fn(FLAGS, dataset_path, N_VERTICES, INPUT_SHAPE=112, is_training=Tr
             parsed_features = tf.parse_example(example_proto, keys_to_features)
             feature_dict = {}
 
-            # parse image
-            def parse_single_image(feature):
+            # # parse image
+            # def parse_single_image(feature):
 
-                m = tf.image.decode_jpeg(feature, channels=3)
-                m = tf.reshape(m, [256, 256, 3])
-                m = tf.to_float(m) / 255.
-                return m
+            #     m = tf.image.decode_jpeg(feature, channels=3)
+            #     m = tf.reshape(m, [256, 256, 3])
+            #     m = tf.to_float(m) / 255.
+            #     return m
 
-            feature_dict['image'] = tf.image.resize_images(
-                tf.map_fn(parse_single_image,
-                          parsed_features['image'], dtype=tf.float32),
-                [INPUT_SHAPE, INPUT_SHAPE]
-            )
+            # feature_dict['image'] = tf.image.resize_images(
+            #     tf.map_fn(parse_single_image,
+            #               parsed_features['image'], dtype=tf.float32),
+            #     [config.INPUT_SHAPE, config.INPUT_SHAPE]
+            # )
 
             # parse mesh
             m = tf.decode_raw(parsed_features['mesh'], tf.float32)
-            m = tf.reshape(m, [-1, N_VERTICES, 3])
-            if is_training:
-                feature_dict['mesh'] = mesh_augmentation(m)
-            else:
-                feature_dict['mesh'] = m
+            m = tf.to_float(tf.reshape(m, [-1, config.N_VERTICES, 3]))
+            feature_dict['mesh'] = m
 
             # parse mesh/colour
             m = tf.decode_raw(parsed_features['mesh/colour'], tf.float32)
-            m = tf.reshape(m, [-1, N_VERTICES, 3])
-            feature_dict['mesh/colour'] = m
+            m = tf.reshape(m, [-1, config.N_VERTICES, 3])
+            feature_dict['mesh/colour'] = tf.to_float(m)
 
             # create cmesh
             feature_dict['cmesh'] = tf.concat(
@@ -326,45 +105,61 @@ def get_data_fn(FLAGS, dataset_path, N_VERTICES, INPUT_SHAPE=112, is_training=Tr
 
             # parse mask
             m = tf.decode_raw(parsed_features['mesh/mask'], tf.float32)
-            m = tf.reshape(m, [-1, N_VERTICES, 1])
-            feature_dict['mask'] = m
+            m = tf.reshape(m, [-1, config.N_VERTICES, 1])
+            feature_dict['mask'] = tf.to_float(m)
+            
 
             return feature_dict, feature_dict
 
         # Parse the record into tensors.
         dataset = dataset.map(
-            _parse_function, num_parallel_calls=FLAGS.no_thread)
+            _parse_function, num_parallel_calls=config.no_thread)
 
         return dataset
 
-    return data_fn
+    def data_fn_h5py():
+        with h5py.File(dataset_path) as df:
+            if is_training:
+                all_cmesh = df['colour_mesh'][:8000]
+            else:
+                all_cmesh = df['colour_mesh'][8000:]
+            
+        input_fn = tf.estimator.inputs.numpy_input_fn(
+            x={
+                "cmesh": all_cmesh,
+            }, y={
+                "mask": np.ones_like(all_cmesh)[...,:1]
+            }, shuffle=True, batch_size=BATCH_SIZE, num_epochs=None, num_threads=config.no_thread
+        )
+
+        return input_fn
+
+    return data_fn_tf if format=='tf' else data_fn_h5py()
 
 
-def get_model_fn(
-    FLAGS, 
-    graph_laplacians, downsampling_matrices, upsamling_matrices, adj_matrices, trilist, 
-    N_VERTICES, EPOCH_STEPS, TOTAL_EPOCH, 
-    FILTERS=[16, 32, 32, 64], EMBEDING=128, INPUT_SHAPE=112, inputs_channels=6):
-
-    BATCH_SIZE = FLAGS.batch_size
-
+def get_model_fn(config):
+    BATCH_SIZE = config.BATCH_SIZE
     def model_fn(features, labels, mode, params):
         # define components
 
         # mesh encoder
         input_mesh = features['cmesh']
-        mesh_embedding = MeshEncoder(
-            input_mesh, EMBEDING, graph_laplacians, downsampling_matrices, filter_list=FILTERS)
+        if not config.use_colour:
+            input_mesh = input_mesh[..., :3]
+
+
+        mesh_embedding = dm.networks.tfl.MeshEncoder(
+            input_mesh, config.EMBEDING, config.graph_laplacians, config.downsampling_matrices, filter_list=config.FILTERS)
 
         # decoder
-        output_rec_mesh = MeshDecoder(
+        output_rec_mesh = dm.networks.tfl.MeshDecoder(
             mesh_embedding,
-            inputs_channels,
-            graph_laplacians,
-            adj_matrices,
-            upsamling_matrices,
+            config.inputs_channels,
+            config.graph_laplacians,
+            config.adj_matrices,
+            config.upsamling_matrices,
             polynomial_order=6,
-            filter_list=FILTERS
+            filter_list=config.FILTERS
         )
 
         # PREDICT mode
@@ -381,18 +176,22 @@ def get_model_fn(
         # camera position:
         eye = tf.constant(BATCH_SIZE * [[0.0, 0.0, -2.0]], dtype=tf.float32)
         center = tf.constant(BATCH_SIZE * [[0.0, 0.0, 0.0]], dtype=tf.float32)
-        world_up = tf.constant(BATCH_SIZE * [[1.0, 0.0, 0.0]], dtype=tf.float32)
+        world_up = tf.constant(BATCH_SIZE * [[-1.0, 0.0, 0.0]], dtype=tf.float32)
         ambient_colors = tf.constant(BATCH_SIZE * [[1., 1., 1.]], dtype=tf.float32) * 0.1
-        light_positions = tf.constant(BATCH_SIZE * [[[2.0, 2.0, 2.0]]]) * 3.
+        light_positions = tf.constant(BATCH_SIZE * [[[2.0, 0, -2.0], [-2.0, 0, -2.0]]])
         light_intensities = tf.ones([BATCH_SIZE, 1, 3], dtype=tf.float32)
-        mesh_triangles = tf.constant(trilist, dtype=tf.int32)
+        mesh_triangles = tf.constant(config.trilist, dtype=tf.int32)
 
         ## predicted mesh render
         pred_mesh_v = output_rec_mesh[...,:3]
-        pred_mesh_c = output_rec_mesh[...,3:]
-        pred_mesh_v.set_shape([BATCH_SIZE, N_VERTICES, 3])
+        if config.use_colour:
+            pred_mesh_c = output_rec_mesh[...,3:]
+        else:
+            pred_mesh_c = tf.ones_like(pred_mesh_v) * 0.5
+        pred_mesh_c = tf.clip_by_value(pred_mesh_c,0,1)
+        pred_mesh_v.set_shape([BATCH_SIZE, config.N_VERTICES, 3])
         pred_mesh_n = tf.nn.l2_normalize(pred_mesh_v, axis=2)
-        pred_mesh_n.set_shape([BATCH_SIZE, N_VERTICES, 3])
+        pred_mesh_n.set_shape([BATCH_SIZE, config.N_VERTICES, 3])
 
         rendered_mesh_rec = mesh_renderer(
             pred_mesh_v,
@@ -404,8 +203,8 @@ def get_model_fn(
             camera_up=world_up,
             light_positions=light_positions,
             light_intensities=light_intensities,
-            image_width=INPUT_SHAPE,
-            image_height=INPUT_SHAPE,
+            image_width=config.INPUT_SHAPE,
+            image_height=config.INPUT_SHAPE,
             specular_colors=None,
             shininess_coefficients=None,
             ambient_color=ambient_colors,
@@ -419,10 +218,14 @@ def get_model_fn(
 
         ## predicted mesh render
         gt_mesh_v = input_mesh[...,:3]
-        gt_mesh_c = input_mesh[...,3:]
-        gt_mesh_v.set_shape([BATCH_SIZE, N_VERTICES, 3])
+        if config.use_colour:
+            gt_mesh_c = input_mesh[...,3:]
+        else:
+            gt_mesh_c = tf.ones_like(gt_mesh_v) * 0.5
+
+        gt_mesh_v.set_shape([BATCH_SIZE, config.N_VERTICES, 3])
         gt_mesh_n = tf.nn.l2_normalize(gt_mesh_v, axis=2)
-        gt_mesh_n.set_shape([BATCH_SIZE, N_VERTICES, 3])
+        gt_mesh_n.set_shape([BATCH_SIZE, config.N_VERTICES, 3])
         
 
         rendered_mesh_gt = mesh_renderer(
@@ -435,8 +238,8 @@ def get_model_fn(
             camera_up=world_up,
             light_positions=light_positions,
             light_intensities=light_intensities,
-            image_width=INPUT_SHAPE,
-            image_height=INPUT_SHAPE,
+            image_width=config.INPUT_SHAPE,
+            image_height=config.INPUT_SHAPE,
             specular_colors=None,
             shininess_coefficients=None,
             ambient_color=ambient_colors,
@@ -449,9 +252,37 @@ def get_model_fn(
         tf.summary.image('image/mesh/gt', rendered_mesh_gt)
 
         # define losses
-        total_loss = tf.reduce_mean(tf.losses.absolute_difference(
-            labels['cmesh'], output_rec_mesh, weights=labels['mask']
-        ))
+        if config.use_colour:
+            loss_shape = tf.reduce_mean(tf.losses.absolute_difference(
+                features['cmesh'][...,:3], output_rec_mesh[...,:3]
+            ))
+
+            loss_appearance = tf.reduce_mean(tf.losses.absolute_difference(
+                features['cmesh'][...,3:], output_rec_mesh[...,3:], weights=labels['mask']
+            ))
+
+            loss_symetric_appearance = tf.reduce_mean(tf.losses.absolute_difference(
+                tf.gather(output_rec_mesh, config.symetric_index, axis=1)[..., 3:], output_rec_mesh[..., 3:]
+            ))
+            
+            loss_render = tf.reduce_mean(tf.losses.absolute_difference(
+                rendered_mesh_gt, rendered_mesh_rec
+            ))
+
+
+            tf.summary.scalar('loss/shape', loss_shape)
+            tf.summary.scalar('loss/appearance', loss_appearance)
+            tf.summary.scalar('loss/symetric', loss_symetric_appearance)
+            tf.summary.scalar('loss/render', loss_render)
+
+            total_loss = loss_shape + 0.*loss_appearance + 0.*loss_symetric_appearance + loss_render
+        else:
+            total_loss = tf.reduce_mean(tf.losses.absolute_difference(
+                features['cmesh'][...,:3], output_rec_mesh, weights=labels['mask']
+            ))
+
+
+
         tf.summary.scalar('loss/total', total_loss)
         global_steps = tf.train.get_global_step()
 
@@ -460,10 +291,10 @@ def get_model_fn(
             
 
             learning_rate = tf.train.exponential_decay(
-                FLAGS.lr,
+                config.LR,
                 global_steps,
-                EPOCH_STEPS,
-                FLAGS.lr_decay
+                config.EPOCH_STEPS,
+                config.lr_decay
             )
 
             tf.summary.scalar('lr', learning_rate)
@@ -479,52 +310,89 @@ def get_model_fn(
 
         # Add evaluation metrics (for EVAL mode)
         eval_metric_ops = {
-            "mae": tf.metrics.mean_absolute_error(labels=labels['cmesh'], predictions=predictions["cmesh"])}
+            "Reconstruction_ALL": tf.metrics.mean_absolute_error(labels=features['cmesh'], predictions=predictions["cmesh"]),
+            "Reconstruction_MESH": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,:3], predictions=predictions["cmesh"][...,:3]),
+            "Reconstruction_COLOUR": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,3:], predictions=predictions["cmesh"][...,3:]),
+        }
         return tf.estimator.EstimatorSpec(
             mode=mode, loss=total_loss, eval_metric_ops=eval_metric_ops)
 
     return model_fn
 
 
-def main():
+def get_config():
 
     # flag definitions
     tf.app.flags.DEFINE_string(
         'meta_path', '/vol/atlas/homes/yz4009/databases/mesh/meta', '''path to meta files''')
     tf.app.flags.DEFINE_string(
         'test_path', '', '''path to test files''')
+    tf.app.flags.DEFINE_string(
+        'warm_start_from', None, '''path to test files''')
+    tf.app.flags.DEFINE_boolean(
+        'colour', True, '''Whether to use colours''')
+    tf.app.flags.DEFINE_boolean(
+        'mein3d', False, '''Whether to use mein3d''')
     tf.app.flags.DEFINE_integer('embedding', 128, '''embedding''')
     from deepmachine.flags import FLAGS
 
-    # hyperparameters
-    BATCH_SIZE = FLAGS.batch_size
-    LR = FLAGS.lr
-    EMBEDING = FLAGS.embedding
-    LOGDIR = format_folder(FLAGS)
-    N_VERTICES = 53215
-    INPUT_SHAPE = 112
-    FILTERS = [16, 32, 32, 64]
-    DB_SIZE = 40000
-    NUM_GPUS = len(FLAGS.gpu.split(','))
-    EPOCH_STEPS = DB_SIZE // (BATCH_SIZE * NUM_GPUS) * 2
-    TOTAL_EPOCH = FLAGS.n_epoch
+    class Config:
 
-    # globel constant
-    shape_model = mio.import_pickle(
-        FLAGS.meta_path + '/all_all_all.pkl')
-    trilist = shape_model.instance([]).trilist
-    graph_laplacians, downsampling_matrices, upsamling_matrices, adj_matrices = mio.import_pickle(
-        FLAGS.meta_path + '/lsfm_LDUA.pkl', encoding='latin1')
+        def format_folder(self, FLAGS):
+            post_fix = 'lr{:f}_d{:f}_emb{:03d}_b{:02d}'.format(
+                FLAGS.lr, FLAGS.lr_decay, FLAGS.embedding, FLAGS.batch_size
+            )
 
+            logdir = FLAGS.logdir if 'model_' in FLAGS.logdir else "{}/model_{}".format(
+                FLAGS.logdir, post_fix
+            )
+
+            return logdir
+
+        def __init__(self, *args, **kwargs):
+            # hyperparameters
+            self.BATCH_SIZE = FLAGS.batch_size
+            self.LR = FLAGS.lr
+            self.mein3d = FLAGS.mein3d
+            self.use_colour = FLAGS.colour
+            self.inputs_channels = 6 if FLAGS.colour else 3
+            self.lr_decay = FLAGS.lr_decay
+            self.warm_start_from = FLAGS.warm_start_from
+            self.EMBEDING = FLAGS.embedding
+            self.LOGDIR = self.format_folder(FLAGS)
+            # self.N_VERTICES = 28431
+            self.N_VERTICES = 53215
+            self.INPUT_SHAPE = 112
+            self.FILTERS = [16, 32, 32, 64]
+            self.DB_SIZE = 8000
+            self.NUM_GPUS = len(FLAGS.gpu.split(','))
+            self.EPOCH_STEPS = self.DB_SIZE // (self.BATCH_SIZE * self.NUM_GPUS)
+            self.TOTAL_EPOCH = FLAGS.n_epoch
+            self.no_thread = FLAGS.no_thread
+            self.dataset_path = FLAGS.dataset_path
+            self.test_path = FLAGS.test_path
+            self.train_format = 'tf' if FLAGS.dataset_path.endswith('.tfrecord') else 'h5py'
+            self.test_format = 'tf' if FLAGS.test_path.endswith('.tfrecord') else 'h5py'
+            # self.luda_file = 'mein3dcrop_LDUA.pkl'
+            self.luda_file = 'lsfm_LDUA.pkl'
+            self.symetric_index = np.load(FLAGS.meta_path + '/symetric_index_full.npy').astype(np.int32)
+            # globel constant
+            self.shape_model = mio.import_pickle(FLAGS.meta_path + '/all_all_all.pkl', encoding='latin1')
+            self.trilist = self.shape_model.instance([]).trilist
+            self.graph_laplacians, self.downsampling_matrices, self.upsamling_matrices, self.adj_matrices = mio.import_pickle(
+                FLAGS.meta_path + '/' + self.luda_file, encoding='latin1')
+
+
+    return Config()
+
+def main():
+
+    config = get_config()
     # configuration
-    if NUM_GPUS > 1:
-        strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=NUM_GPUS)
-    else:
-        strategy = tf.contrib.distribute.OneDeviceStrategy(0)
-
-    config = tf.estimator.RunConfig(
+    strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=config.NUM_GPUS) if config.NUM_GPUS > 1 else None
+    config_estimator = tf.estimator.RunConfig(
         train_distribute=strategy,
-        save_checkpoints_steps=EPOCH_STEPS,
+        save_checkpoints_secs=600,
         save_summary_steps=100,
         keep_checkpoint_max=None,
     )
@@ -532,16 +400,16 @@ def main():
     # Set up Hooks
     class TimeHistory(tf.train.SessionRunHook):
         def begin(self):
-            self._step = -1
+            self._step_tf = tf.train.get_global_step()
             self.times = []
-            self.total_epoch = TOTAL_EPOCH
-            self.total_steps = EPOCH_STEPS * self.total_epoch
+            self.total_epoch = config.TOTAL_EPOCH
+            self.total_steps = config.EPOCH_STEPS * self.total_epoch
 
         def before_run(self, run_context):
-            self._step += 1
             self.iter_time_start = time.time()
 
         def after_run(self, run_context, run_values):
+            self._step = run_context.session.run(self._step_tf)
             self.times.append(time.time() - self.iter_time_start)
 
             if self._step % 20 == 0:
@@ -549,39 +417,41 @@ def main():
                 avg_time_per_batch = np.mean(time_hist.times[-20:])
                 estimate_finishing_time = (
                     self.total_steps - self._step) * avg_time_per_batch
-                i_batch = self._step % EPOCH_STEPS
-                i_epoch = self._step // EPOCH_STEPS
+                i_batch = self._step % config.EPOCH_STEPS
+                i_epoch = self._step // config.EPOCH_STEPS
 
                 
-                print("INFO: Epoch [{}/{}], Batch [{}/{}]".format(i_epoch,self.total_epoch,i_batch,EPOCH_STEPS))
+                print("INFO: Epoch [{}/{}], Batch [{}/{}]".format(i_epoch,self.total_epoch,i_batch,config.EPOCH_STEPS))
                 print("INFO: Estimate Finishing time: {}".format(datetime.timedelta(seconds=estimate_finishing_time)))
-                print("INFO: Image/sec: {}".format(BATCH_SIZE*NUM_GPUS/avg_time_per_batch))
-                print("INFO: N GPUs: {}".format(NUM_GPUS))
+                print("INFO: Image/sec: {}".format(config.BATCH_SIZE*config.NUM_GPUS/avg_time_per_batch))
+                print("INFO: N GPUs: {}".format(config.NUM_GPUS))
 
     time_hist = TimeHistory()
 
     # Create the Estimator
     Fast_3DMM = tf.estimator.Estimator(
-        model_fn=get_model_fn(
-            FLAGS, graph_laplacians, downsampling_matrices, upsamling_matrices, adj_matrices, trilist, N_VERTICES, EPOCH_STEPS, TOTAL_EPOCH, FILTERS=FILTERS, EMBEDING=EMBEDING, INPUT_SHAPE=INPUT_SHAPE
-        ), model_dir=LOGDIR, config=config)
+        model_fn=get_model_fn(config), model_dir=config.LOGDIR, config=config_estimator, warm_start_from=config.warm_start_from)
 
     
 
-    train_spec = tf.estimator.TrainSpec(
-        input_fn=get_data_fn(
-            FLAGS, FLAGS.dataset_path, N_VERTICES, INPUT_SHAPE=INPUT_SHAPE
-        ), 
-        maxsteps=EPOCH_STEPS * TOTAL_EPOCH, 
-        hooks=[time_hist]
-    )
-    eval_spec = tf.estimator.EvalSpec(
-        input_fn=get_data_fn(
-            FLAGS, FLAGS.test_path, N_VERTICES, INPUT_SHAPE=INPUT_SHAPE, is_training=False
+    if config.test_path:
+        train_spec = tf.estimator.TrainSpec(
+            input_fn=get_data_fn(config, config.dataset_path, format=config.train_format), 
+            max_steps=config.EPOCH_STEPS * config.TOTAL_EPOCH, 
+            hooks=[time_hist]
         )
-    )
 
-    tf.estimator.train_and_evaluate(Fast_3DMM, train_spec, eval_spec)
+        eval_spec = tf.estimator.EvalSpec(
+            input_fn=get_data_fn(config, config.test_path, is_training=False, format=config.test_format)
+        )
+
+        tf.estimator.train_and_evaluate(Fast_3DMM, train_spec, eval_spec)
+    else:
+        Fast_3DMM.train(get_data_fn(
+            config, config.dataset_path, is_training=True, format=config.train_format
+        ), steps=config.EPOCH_STEPS * config.TOTAL_EPOCH, hooks=[time_hist])
+
+    
 
 
 
