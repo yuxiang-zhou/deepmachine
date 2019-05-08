@@ -30,111 +30,34 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 # Component Definition
 
-def get_data_fn(config, dataset_path, is_training=True, data_format='h5py'):
+def get_data_fn(config, dataset_path, is_training=True, data_format='h5py', num_epochs=None):
     BATCH_SIZE = config.BATCH_SIZE
     NUM_GPUS = config.NUM_GPUS
 
-    def mesh_augmentation(meshes):
-        # scale
-        meshes *= tf.random_uniform([BATCH_SIZE, 1, 1]) * 0.7 + 0.8
-
-        # translation
-        meshes += tf.random_uniform([BATCH_SIZE, 1, 3]) * 0.4 - 0.2
-
-        # rotation
-        # pending
-
-        return meshes
-
-    def data_fn_tf():
-
-        keys_to_features = dm.utils.union_dict([
-            # dm.data.provider.features.image_feature(),
-            dm.data.provider.features.matrix_feature('mesh'),
-            dm.data.provider.features.matrix_feature('mesh/colour'),
-            dm.data.provider.features.array_feature('mesh/mask'),
-        ])
-
-        dataset = tf.data.TFRecordDataset(
-            dataset_path, num_parallel_reads=config.no_thread)
-
-        # Shuffle the dataset
-        dataset = dataset.shuffle(
-            buffer_size=BATCH_SIZE * NUM_GPUS * config.no_thread)
-
-        # Repeat the input indefinitly
-        dataset = dataset.repeat()
-
-        # Generate batches
-        dataset = dataset.batch(BATCH_SIZE)
-
-        # example proto decode
-        def _parse_function(example_proto):
-
-            parsed_features = tf.parse_example(example_proto, keys_to_features)
-            feature_dict = {}
-
-            # # parse image
-            # def parse_single_image(feature):
-
-            #     m = tf.image.decode_jpeg(feature, channels=3)
-            #     m = tf.reshape(m, [256, 256, 3])
-            #     m = tf.to_float(m) / 255.
-            #     return m
-
-            # feature_dict['image'] = tf.image.resize_images(
-            #     tf.map_fn(parse_single_image,
-            #               parsed_features['image'], dtype=tf.float32),
-            #     [config.INPUT_SHAPE, config.INPUT_SHAPE]
-            # )
-
-            # parse mesh
-            m = tf.decode_raw(parsed_features['mesh'], tf.float32)
-            m = tf.to_float(tf.reshape(m, [-1, config.N_VERTICES, 3]))
-            feature_dict['mesh'] = m
-
-            # parse mesh/colour
-            m = tf.decode_raw(parsed_features['mesh/colour'], tf.float32)
-            m = tf.reshape(m, [-1, config.N_VERTICES, 3])
-            feature_dict['mesh/colour'] = tf.to_float(m)
-
-            # create cmesh
-            feature_dict['cmesh'] = tf.concat(
-                [feature_dict['mesh'], feature_dict['mesh/colour']], axis=-1
-            )
-
-            # parse mask
-            m = tf.decode_raw(parsed_features['mesh/mask'], tf.float32)
-            m = tf.reshape(m, [-1, config.N_VERTICES, 1])
-            feature_dict['mask'] = tf.to_float(m)
-            
-
-            return feature_dict, feature_dict
-
-        # Parse the record into tensors.
-        dataset = dataset.map(
-            _parse_function, num_parallel_calls=config.no_thread)
-
-        return dataset
-
     def data_fn_h5py():
+        
         with h5py.File(dataset_path) as df:
             if is_training:
                 all_cmesh = df['colour_mesh'][:8000]
             else:
                 all_cmesh = df['colour_mesh'][8000:]
             
+            L,D,U,A = mio.import_pickle('/vol/phoebe/yz4009/databases/mesh/meta/mein3dcrop_LDUA.pkl', encoding='latin1')
+            all_cmesh = D[0].dot(all_cmesh.transpose(
+                [1,0,2]).reshape([D[0].shape[1],-1])).reshape([D[0].shape[0], -1, config.inputs_channels]).transpose([1,0,2])
+            all_cmesh = all_cmesh.astype(np.float32)
+            
         input_fn = tf.estimator.inputs.numpy_input_fn(
             x={
                 "cmesh": all_cmesh,
             }, y={
                 "mask": np.ones_like(all_cmesh)[...,:1]
-            }, shuffle=True, batch_size=BATCH_SIZE, num_epochs=None, num_threads=config.no_thread
+            }, shuffle=True, batch_size=BATCH_SIZE, num_epochs=num_epochs, num_threads=config.no_thread
         )
 
         return input_fn
 
-    return data_fn_tf if data_format=='tf' else data_fn_h5py()
+    return data_fn_h5py()
 
 
 def get_model_fn(config):
@@ -149,7 +72,12 @@ def get_model_fn(config):
 
 
         mesh_embedding = dm.networks.tfl.MeshEncoder(
-            input_mesh, config.EMBEDING, config.graph_laplacians, config.downsampling_matrices, filter_list=config.FILTERS)
+            input_mesh, 
+            config.EMBEDING, 
+            config.graph_laplacians, 
+            config.downsampling_matrices, 
+            polynomial_order=config.NK,
+            filter_list=config.FILTERS)
 
         # decoder
         output_rec_mesh = dm.networks.tfl.MeshDecoder(
@@ -158,7 +86,7 @@ def get_model_fn(config):
             config.graph_laplacians,
             config.adj_matrices,
             config.upsamling_matrices,
-            polynomial_order=6,
+            polynomial_order=config.NK,
             filter_list=config.FILTERS
         )
 
@@ -260,24 +188,11 @@ def get_model_fn(config):
             loss_appearance = tf.reduce_mean(tf.losses.absolute_difference(
                 features['cmesh'][...,3:], output_rec_mesh[...,3:], weights=labels['mask']
             ))
-
-            loss_symetric_appearance = tf.reduce_mean(tf.losses.absolute_difference(
-                tf.gather(output_rec_mesh, config.symetric_index, axis=1)[..., 3:], output_rec_mesh[..., 3:]
-            ))
-            
-            canny_weight = dm.utils.tf_canny(rendered_mesh_gt)
-            tf.summary.image('image/render/weight', canny_weight)
-            loss_render = tf.reduce_mean(tf.losses.absolute_difference(
-                rendered_mesh_gt, rendered_mesh_rec, weights=canny_weight
-            ))
-
-
+           
             tf.summary.scalar('loss/shape', loss_shape)
             tf.summary.scalar('loss/appearance', loss_appearance)
-            tf.summary.scalar('loss/symetric', loss_symetric_appearance)
-            tf.summary.scalar('loss/render', loss_render)
 
-            total_loss = loss_shape + 0.5*loss_appearance + 0.*loss_symetric_appearance + 0.5*loss_render
+            total_loss = loss_shape + 0.5*loss_appearance
             total_loss /= 2.
         else:
             total_loss = tf.reduce_mean(tf.losses.absolute_difference(
@@ -318,12 +233,19 @@ def get_model_fn(config):
             )
 
             return tf.estimator.EstimatorSpec(mode=mode, loss=total_loss, train_op=train_op)
+        
+        def nmse(labels, predictions, norm_factor=0.61775377381):
+            error, op = tf.metrics.mean_squared_error(labels=labels, predictions=predictions)
+            return error / norm_factor, op
+            
 
         # Add evaluation metrics (for EVAL mode)
         eval_metric_ops = {
-            "Reconstruction_ALL": tf.metrics.mean_absolute_error(labels=features['cmesh'], predictions=predictions["cmesh"]),
-            "Reconstruction_MESH": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,:3], predictions=predictions["cmesh"][...,:3]),
-            "Reconstruction_COLOUR": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,3:], predictions=predictions["cmesh"][...,3:]),
+            "Reconstruction_ALL_mae": tf.metrics.mean_absolute_error(labels=features['cmesh'], predictions=predictions["cmesh"]),
+            "Reconstruction_MESH_mae": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,:3], predictions=predictions["cmesh"][...,:3]),
+            "Reconstruction_MESH_mse": tf.metrics.mean_squared_error(labels=features['cmesh'][...,:3], predictions=predictions["cmesh"][...,:3]), 
+            "Reconstruction_MESH_nmse": nmse(labels=features['cmesh'][...,:3], predictions=predictions["cmesh"][...,:3]),
+            "Reconstruction_COLOUR_mae": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,3:], predictions=predictions["cmesh"][...,3:]),
         }
         return tf.estimator.EstimatorSpec(
             mode=mode, loss=total_loss, eval_metric_ops=eval_metric_ops)
@@ -344,16 +266,15 @@ def get_config():
         'opt', 'adam', '''path to test files''')
     tf.app.flags.DEFINE_boolean(
         'colour', True, '''Whether to use colours''')
-    tf.app.flags.DEFINE_boolean(
-        'mein3d', False, '''Whether to use mein3d''')
     tf.app.flags.DEFINE_integer('embedding', 128, '''embedding''')
+    tf.app.flags.DEFINE_integer('k_poly', 4, '''embedding''')
     from deepmachine.flags import FLAGS
 
     class Config:
 
         def format_folder(self, FLAGS):
-            post_fix = 'lr{:f}_d{:f}_emb{:03d}_b{:02d}'.format(
-                FLAGS.lr, FLAGS.lr_decay, FLAGS.embedding, FLAGS.batch_size
+            post_fix = 'lr_{:f}-d_{:f}-emb_{:03d}-b_{:02d}-{}-k_{}-colour_{}'.format(
+                FLAGS.lr, FLAGS.lr_decay, FLAGS.embedding, FLAGS.batch_size, FLAGS.opt, FLAGS.k_poly, str(FLAGS.colour)
             )
 
             logdir = FLAGS.logdir if 'model_' in FLAGS.logdir else "{}/model_{}".format(
@@ -367,31 +288,32 @@ def get_config():
             self.BATCH_SIZE = FLAGS.batch_size
             self.LR = FLAGS.lr
             self.opt = FLAGS.opt
-            self.mein3d = FLAGS.mein3d
+            self.NK = FLAGS.k_poly
             self.use_colour = FLAGS.colour
             self.inputs_channels = 6 if FLAGS.colour else 3
             self.lr_decay = FLAGS.lr_decay
             self.warm_start_from = FLAGS.warm_start_from
             self.EMBEDING = FLAGS.embedding
             self.LOGDIR = self.format_folder(FLAGS)
-            # self.N_VERTICES = 28431
-            self.INPUT_SHAPE = 112
-            self.FILTERS = [16, 32, 32, 64]
-            self.DB_SIZE = 8000
             self.NUM_GPUS = len(FLAGS.gpu.split(','))
-            self.EPOCH_STEPS = self.DB_SIZE // (self.BATCH_SIZE * self.NUM_GPUS)
             self.TOTAL_EPOCH = FLAGS.n_epoch
             self.no_thread = FLAGS.no_thread
             self.dataset_path = FLAGS.dataset_path
             self.test_path = FLAGS.test_path
             self.train_format = 'tf' if FLAGS.dataset_path.endswith('.tfrecord') else 'h5py'
             self.test_format = 'tf' if FLAGS.test_path.endswith('.tfrecord') else 'h5py'
+            # constant
+            self.INPUT_SHAPE = 112
+            self.FILTERS = [16, 16, 16, 32]
+            self.DB_SIZE = 8000
+            self.EPOCH_STEPS = self.DB_SIZE // (self.BATCH_SIZE * self.NUM_GPUS)
+            
+            # graph constant
             self.luda_file = 'mein3dcrop_7k_LDUA.pkl'
             # self.luda_file = 'lsfm_LDUA.pkl'
             self.symetric_index = np.load(FLAGS.meta_path + '/symetric_index_full.npy').astype(np.int32)
-            # globel constant
-            self.shape_model = mio.import_pickle(FLAGS.meta_path + '/all_all_all.pkl', encoding='latin1')
-            self.trilist = self.shape_model.instance([]).trilist
+            self.shape_model = mio.import_pickle(FLAGS.meta_path + '/mein3dcrop_7k_mesh.pkl', encoding='latin1')
+            self.trilist = self.shape_model.trilist
             self.graph_laplacians, self.downsampling_matrices, self.upsamling_matrices, self.adj_matrices = mio.import_pickle(
                 FLAGS.meta_path + '/' + self.luda_file, encoding='latin1')
             self.N_VERTICES = self.graph_laplacians[0].shape[0]
@@ -447,22 +369,21 @@ def main():
         model_fn=get_model_fn(config), model_dir=config.LOGDIR, config=config_estimator, warm_start_from=config.warm_start_from)
 
     
-
     if config.test_path:
         train_spec = tf.estimator.TrainSpec(
-            input_fn=get_data_fn(config, config.dataset_path, format=config.train_format), 
+            input_fn=get_data_fn(config, config.dataset_path, is_training=True, data_format=config.train_format), 
             max_steps=config.EPOCH_STEPS * config.TOTAL_EPOCH, 
             hooks=[time_hist]
         )
 
         eval_spec = tf.estimator.EvalSpec(
-            input_fn=get_data_fn(config, config.test_path, is_training=False, format=config.test_format)
+            input_fn=get_data_fn(config, config.test_path, is_training=False, data_format=config.test_format)
         )
 
         tf.estimator.train_and_evaluate(Fast_3DMM, train_spec, eval_spec)
     else:
         Fast_3DMM.train(get_data_fn(
-            config, config.dataset_path, is_training=True, format=config.train_format
+            config, config.dataset_path, is_training=True, data_format=config.train_format
         ), steps=config.EPOCH_STEPS * config.TOTAL_EPOCH, hooks=[time_hist])
 
     

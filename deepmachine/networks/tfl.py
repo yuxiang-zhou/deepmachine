@@ -52,6 +52,7 @@ def MeshEncoder(inputs, embeding, graph_laplacians, downsampling_matrices, polyn
 
             net = layers.tfl.MeshConv(
                 nl, nf=nf, polynomial_order=polynomial_order, **kwargs)(net)
+            net = tf.layers.batch_normalization(net)
             net = layers.tfl.MeshReLU1B()(net)
             net = layers.tfl.MeshPool(nd)(net)
 
@@ -73,6 +74,7 @@ def MeshDecoder(inputs, out_channel, graph_laplacians, adj_matrices, upsamling_m
             net = layers.tfl.MeshPoolTrans(nu)(net)
             net = layers.tfl.MeshConv(
                 nl, nf=nf, polynomial_order=polynomial_order, **kwargs)(net)
+            net = tf.layers.batch_normalization(net)
             net = layers.tfl.MeshReLU1B()(net)
 
         net = layers.MeshConv(graph_laplacians[0], nf=out_channel,

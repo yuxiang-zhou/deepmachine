@@ -69,7 +69,6 @@ def get_data_fn(config, dataset_path, is_training=True, format='tf'):
                 m = tf.image.decode_jpeg(feature, channels=3)
                 m = tf.reshape(m, [256, 256, 3])
                 m = tf.to_float(m) / 255.
-                m = tf.random_crop(m, [224, 224, 3])
                 return m
 
             feature_dict['image'] = tf.image.resize_images(
@@ -139,6 +138,7 @@ def get_model_fn(config):
         with tf.variable_scope('projection'):
 
             output_mesh_proj = dm.layers.tfl.MeshConv(config.graph_laplacians[0], nf=3, name='proj_conv')(output_rec_cmesh[..., :3])
+            output_mesh_proj = tf.layers.batch_normalization(output_mesh_proj)
             output_mesh_proj = dm.layers.tfl.MeshReLU1B(name='proj_relu1b')(output_mesh_proj)
 
         # PREDICT mode
@@ -232,21 +232,20 @@ def get_model_fn(config):
         loss_appearance = tf.reduce_mean(tf.losses.absolute_difference(
             features['cmesh'][...,3:], output_rec_cmesh_ae[...,3:], weights=labels['mask']
         ))
-
-        loss_symetric_appearance = tf.reduce_mean(tf.losses.absolute_difference(
-            tf.gather(output_rec_cmesh_ae, config.symetric_index, axis=1)[..., 3:], output_rec_cmesh_ae[..., 3:]
-        ))
-
+        
+        canny_weight = dm.utils.tf_canny(gt_mesh_r)
+        tf.summary.image('image/render/weight', canny_weight)
         loss_render = tf.reduce_mean(tf.losses.absolute_difference(
-            gt_mesh_r, ae_mesh_r
+            gt_mesh_r, ae_mesh_r, weights=canny_weight
         ))
+        
 
         tf.summary.scalar('loss/ae/shape', loss_shape)
         tf.summary.scalar('loss/ae/appearance', loss_appearance)
-        tf.summary.scalar('loss/ae/symetric', loss_symetric_appearance)
         tf.summary.scalar('loss/ae/render', loss_render)
 
-        loss_ae = loss_shape + loss_appearance + loss_symetric_appearance + loss_render
+        loss_ae = loss_shape + 0.5*loss_appearance + 0.5*loss_render
+        loss_ae /= 2.
 
         tf.summary.scalar('loss/ae/total', loss_ae)
 
@@ -259,13 +258,11 @@ def get_model_fn(config):
         loss_appearance = tf.reduce_mean(tf.losses.absolute_difference(
             features['cmesh'][...,3:], output_rec_cmesh[...,3:], weights=labels['mask']
         ))
-
-        loss_symetric_appearance = tf.reduce_mean(tf.losses.absolute_difference(
-            tf.gather(output_rec_cmesh, config.symetric_index, axis=1)[..., 3:], output_rec_cmesh[..., 3:]
-        ))
-
+        
+        canny_weight = dm.utils.tf_canny(gt_mesh_r)
+        tf.summary.image('image/render/weight', canny_weight)
         loss_render = tf.reduce_mean(tf.losses.absolute_difference(
-            gt_mesh_r, c3dmm_mesh_r
+            gt_mesh_r, c3dmm_mesh_r, weights=canny_weight
         ))
 
         loss_projection = tf.reduce_mean(tf.losses.absolute_difference(
@@ -274,11 +271,11 @@ def get_model_fn(config):
 
         tf.summary.scalar('loss/3dmm/shape', loss_shape)
         tf.summary.scalar('loss/3dmm/appearance', loss_appearance)
-        tf.summary.scalar('loss/3dmm/symetric', loss_symetric_appearance)
         tf.summary.scalar('loss/3dmm/render', loss_render)
         tf.summary.scalar('loss/3dmm/projection', loss_projection)
 
-        loss_3dmm = loss_shape + loss_appearance + loss_symetric_appearance + loss_render + loss_projection * 1e-6
+        loss_3dmm = loss_shape + 0.5*loss_appearance + 0.5*loss_render + loss_projection
+        loss_3dmm /= 3.
 
         tf.summary.scalar('loss/3dmm/total', loss_3dmm)
 
@@ -303,7 +300,7 @@ def get_model_fn(config):
 
             ## 3dmm train op
             tf.summary.scalar('lr/3dmm', learning_rate)
-            optimizer_3dmm = tf.train.AdamOptimizer(learning_rate=learning_rate)
+            optimizer_3dmm = tf.train.RMSPropOptimizer(learning_rate=learning_rate)
             optimizer_3dmm = tf.contrib.estimator.clip_gradients_by_norm(
                 optimizer_3dmm, 5.0)
             train_op_3dmm = optimizer_3dmm.minimize(
@@ -317,7 +314,7 @@ def get_model_fn(config):
             )
 
             ## autoencoder train op
-            optimizer_mesh_ae = tf.train.AdamOptimizer(
+            optimizer_mesh_ae = tf.train.RMSPropOptimizer(
                 learning_rate=learning_rate / 100.)
             optimizer_mesh_ae = tf.contrib.estimator.clip_gradients_by_norm(
                 optimizer_mesh_ae, 5.0)
@@ -331,15 +328,14 @@ def get_model_fn(config):
 
             train_op = tf.group(train_op_3dmm, train_op_mesh_ae)
 
-            print(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mesh_encoder'))
-
             return tf.estimator.EstimatorSpec(mode=mode, loss=loss_total, train_op=train_op)
 
         # Add evaluation metrics (for EVAL mode)
         eval_metric_ops = {
-            "Reconstruction_ALL": tf.metrics.mean_absolute_error(labels=features['cmesh'], predictions=predictions["cmesh"]),
-            "Reconstruction_MESH": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,:3], predictions=predictions["cmesh"][...,:3]),
-            "Reconstruction_COLOUR": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,3:], predictions=predictions["cmesh"][...,3:]),
+            "Reconstruction/All": tf.metrics.mean_absolute_error(labels=features['cmesh'], predictions=predictions["cmesh"]),
+            "Reconstruction/Mesh": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,:3], predictions=predictions["cmesh"][...,:3]),
+            "Reconstruction/Appearance": tf.metrics.mean_absolute_error(labels=features['cmesh'][...,3:], predictions=predictions["cmesh"][...,3:]),
+            "Reconstruction/Proj": tf.metrics.mean_absolute_error(labels=features['mesh/in_img'], predictions=output_mesh_proj),
         }
         return tf.estimator.EstimatorSpec(
             mode=mode, loss=loss_total, eval_metric_ops=eval_metric_ops)
@@ -507,7 +503,8 @@ def main():
         )
 
         eval_spec = tf.estimator.EvalSpec(
-            input_fn=get_data_fn(config, config.test_path, is_training=False, format=config.test_format)
+            input_fn=get_data_fn(config, config.test_path, is_training=False, format=config.test_format),
+            steps=config.EPOCH_STEPS * 5
         )
 
         tf.estimator.train_and_evaluate(Fast_3DMM, train_spec, eval_spec)

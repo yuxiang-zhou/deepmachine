@@ -7,6 +7,7 @@ import scipy.spatial.distance
 import numpy as np
 import menpo3d.io as m3io
 
+from scipy.stats import norm
 from mpl_toolkits.mplot3d import Axes3D
 from menpo3d.rasterize import rasterize_mesh
 from menpo3d.rasterize import rasterize_barycentric_coordinate_images
@@ -343,11 +344,8 @@ def render_cmesh_cloud(cmesh, figsize=[14,14], oritation=[0,0,0], normalise=True
     
     # normalise to unit sphere
     if normalise:
-        points -= points.min()
+        points -= points.mean(axis=0)
         points /= points.max()
-        points *= 2.
-        points -= 1
-    
     
     zori = Homogeneous(rotation_matrix(np.deg2rad(oritation[2]), [0,0,1]))
     yori = Homogeneous(rotation_matrix(np.deg2rad(oritation[1]), [0,1,0]))
@@ -398,3 +396,23 @@ def rotate_mesh(mesh, angle, axis=0):
     mesh.points += mesh_t
     
     return mesh
+
+
+def recover_mesh_from_uvxyz(uvxyz, img, template_mask, trilist=None):
+    mu = np.mean(uvxyz[template_mask],axis=0)
+    std = np.std(uvxyz[template_mask],axis=0)
+    nd = norm(mu, std)
+    nd_mask = (nd.cdf(uvxyz[template_mask]) < [0.05, 0.05, 0.01]).any(axis=-1)
+    plan_points = np.stack(np.meshgrid(*map(range, [256, 256])) + [np.zeros([256, 256])], axis=-1)[template_mask][~nd_mask]
+    if trilist is not None:
+        plan_trilist = trilist
+    else:
+        plan_trilist = TriMesh(plan_points[:,:2]).trilist
+    masked_points = uvxyz[template_mask][~nd_mask].clip(0,1) * 256
+    color_sampling = masked_points[:,:2].astype(np.uint8)
+    rec_shape = ColouredTriMesh(
+        masked_points * [1,1,-1], 
+        trilist=plan_trilist, 
+        colours=img.pixels_with_channels_at_back()[color_sampling[:,0],color_sampling[:,1],:] # np.ones_like(masked_points) * [0,0,1] #
+    )
+    return rec_shape
